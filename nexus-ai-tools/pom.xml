@@ -22,12 +22,7 @@
             <artifactId>nexus-ai-api</artifactId>
             <version>${project.version}</version>
         </dependency>
-        <!-- 依赖插件SPI -->
-        <dependency>
-            <groupId>com.eazyai</groupId>
-            <artifactId>nexus-ai-plugin-spi</artifactId>
-            <version>${project.version}</version>
-        </dependency>
+
 
         <!-- LangChain4j -->
         <dependency>

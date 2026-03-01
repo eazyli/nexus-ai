@@ -40,12 +40,7 @@
             <artifactId>nexus-ai-infra</artifactId>
             <version>${project.version}</version>
         </dependency>
-        <!-- 依赖插件管理器 -->
-        <dependency>
-            <groupId>com.eazyai</groupId>
-            <artifactId>nexus-ai-plugin-manager</artifactId>
-            <version>${project.version}</version>
-        </dependency>
+
         <!-- 依赖工具层 -->
         <dependency>
             <groupId>com.eazyai</groupId>

@@ -31,8 +31,6 @@
         <module>nexus-ai-model</module>
         <module>nexus-ai-application</module>
         <module>nexus-ai-infra</module>
-        <module>nexus-ai-plugin/nexus-ai-plugin-spi</module>
-        <module>nexus-ai-plugin/nexus-ai-plugin-manager</module>
         <module>nexus-ai-core</module>
         <module>nexus-ai-tools</module>
         <module>nexus-ai-observability</module>

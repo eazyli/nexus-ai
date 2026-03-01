@@ -22,12 +22,7 @@
             <artifactId>nexus-ai-api</artifactId>
             <version>${project.version}</version>
         </dependency>
-        <!-- 插件SPI -->
-        <dependency>
-            <groupId>com.eazyai</groupId>
-            <artifactId>nexus-ai-plugin-spi</artifactId>
-            <version>${project.version}</version>
-        </dependency>
+
         <!-- Spring AI -->
         <dependency>
             <groupId>org.springframework.ai</groupId>

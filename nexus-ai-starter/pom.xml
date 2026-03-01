@@ -26,16 +26,7 @@
             <artifactId>nexus-ai-core</artifactId>
             <version>${project.version}</version>
         </dependency>
-        <dependency>
-            <groupId>com.eazyai</groupId>
-            <artifactId>nexus-ai-plugin-spi</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>com.eazyai</groupId>
-            <artifactId>nexus-ai-plugin-manager</artifactId>
-            <version>${project.version}</version>
-        </dependency>
+
         <dependency>
             <groupId>com.eazyai</groupId>
             <artifactId>nexus-ai-observability</artifactId>
