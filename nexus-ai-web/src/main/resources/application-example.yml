@@ -1,0 +1,142 @@
+server:
+  port: 8088
+
+spring:
+  application:
+    name: nexus-ai-web
+
+  # MySQL数据源配置
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/nexus_ai?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    username: root
+    password: your_password
+    hikari:
+      minimum-idle: 5
+      maximum-pool-size: 20
+      idle-timeout: 30000
+      pool-name: NexusAIHikariCP
+      max-lifetime: 1800000
+      connection-timeout: 30000
+
+  ai:
+    openai:
+      # 使用环境变量配置API Key，支持DeepSeek、OpenAI等兼容接口
+      api-key: ${OPENAI_API_KEY:your-api-key-here}
+      base-url: ${OPENAI_BASE_URL:https://api.openai.com}
+      chat:
+        options:
+          model: ${OPENAI_MODEL:gpt-3.5-turbo}
+          temperature: 0.7
+          max-tokens: 2000
+
+# MyBatis-Plus配置
+mybatis-plus:
+  mapper-locations: classpath*:/mapper/**/*.xml
+  type-aliases-package: com.eazyai.ai.nexus.infra.dal.entity
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  global-config:
+    db-config:
+      id-type: assign_id
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+
+# LangChain4j配置
+langchain4j:
+  open-ai:
+    chat-model:
+      api-key: ${LANGCHAIN4J_API_KEY:your-api-key-here}
+      base-url: ${LANGCHAIN4J_BASE_URL:https://api.openai.com}
+      model-name: ${LANGCHAIN4J_MODEL:gpt-3.5-turbo}
+      temperature: 0.7
+      max-tokens: 2000
+
+# Nexus AI 平台配置
+nexus:
+  ai:
+    # HTTP工具执行器配置
+    http:
+      connect-timeout: 5000
+      read-timeout: 30000
+      write-timeout: 30000
+      max-connections: 100
+      max-connections-per-route: 20
+      keep-alive-duration: 60000
+      retry-count: 3
+      retry-interval: 1000
+
+    # 会话管理配置
+    session:
+      expiration-enabled: true
+      expiration-minutes: 30
+      cleanup-interval-minutes: 5
+      max-sessions: 10000
+      default-memory-window: 20
+
+    # 流式执行配置
+    streaming:
+      sse-timeout: 300000
+      core-pool-size: 4
+      max-pool-size: 20
+      keep-alive-seconds: 60
+      queue-capacity: 100
+      thread-name-prefix: nexus-streaming-
+      allow-core-thread-time-out: true
+
+    # 工具执行配置
+    tool:
+      execution-timeout: 60000
+      max-iterations: 10
+      parallel-execution: false
+      parallel-max-threads: 5
+
+# AI Agent配置
+ai:
+  agent:
+    # 工具配置
+    tools:
+      search:
+        api-key: ${SEARCH_API_KEY:}
+        engine: bing
+        limit: 5
+    # RAG配置
+    rag:
+      elasticsearch:
+        host: localhost
+        port: 9200
+      index: knowledge_base
+      top-k: 5
+      chunk-size: 500
+      chunk-overlap: 50
+    # Embedding配置
+    embedding:
+      # 类型: openai / http / onnx / djl
+      type: openai
+      api-key: ${EMBEDDING_API_KEY:your-api-key-here}
+      base-url: ${EMBEDDING_BASE_URL:https://api.openai.com}
+      model: text-embedding-ada-002
+      dimension: 1536
+
+# 本地BGE模型配置示例（取消注释启用）
+#    embedding:
+#      type: http
+#      base-url: http://localhost:8080
+#      model: bge-large-zh-v1.5
+#      dimension: 1024
+
+# 日志配置
+logging:
+  level:
+    com.eazyai.ai.nexus: DEBUG
+    dev.langchain4j: DEBUG
+
+# Swagger配置
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    enabled: true

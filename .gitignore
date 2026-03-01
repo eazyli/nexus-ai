@@ -1,0 +1,68 @@
+# 编译输出
+target/
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+
+# IDE文件
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+.settings/
+.project
+.classpath
+*.swp
+*.swo
+*~
+
+# Maven
+.mvn/
+mvnw
+mvnw.cmd
+
+# 日志文件
+logs/
+*.log
+
+# 敏感配置文件
+application-local.yml
+application-dev.yml
+application-prod.yml
+
+# 系统文件
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# 临时文件
+*.tmp
+*.temp
+*.bak
+*.cache
+
+# 打包文件
+*.zip
+*.tar.gz
+*.rar
+
+# 测试覆盖率报告
+coverage/
+*.lcov
+.nyc_output/
+
+# 依赖目录
+node_modules/
+
+# 环境变量文件
+.env
+.env.local
+.env.*.local
