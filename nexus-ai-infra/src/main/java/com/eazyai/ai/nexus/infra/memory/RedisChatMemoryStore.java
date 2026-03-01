@@ -1,9 +1,12 @@
 package com.eazyai.ai.nexus.infra.memory;
 
 import com.eazyai.ai.nexus.core.memory.ChatMemoryStore;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import dev.langchain4j.data.message.ChatMessage;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,8 +31,19 @@ public class RedisChatMemoryStore implements ChatMemoryStore {
     @Autowired(required = false)
     private StringRedisTemplate redisTemplate;
 
-    @Autowired
-    private ObjectMapper objectMapper;
+    /**
+     * 专用于 ChatMessage 序列化的 ObjectMapper
+     * 启用类型信息以支持多态反序列化
+     */
+    private final ObjectMapper objectMapper = new ObjectMapper() {{
+        registerModule(new JavaTimeModule());
+        disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+        activateDefaultTyping(
+            getPolymorphicTypeValidator(),
+            ObjectMapper.DefaultTyping.NON_FINAL,
+            JsonTypeInfo.As.PROPERTY
+        );
+    }};
 
     @Override
     public List<ChatMessage> getMessages(String sessionId) {
