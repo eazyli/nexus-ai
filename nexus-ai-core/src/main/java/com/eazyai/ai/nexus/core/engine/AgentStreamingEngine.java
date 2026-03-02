@@ -50,8 +50,27 @@ public class AgentStreamingEngine {
         long startTime = System.currentTimeMillis();
         String requestId = java.util.UUID.randomUUID().toString();
 
-        log.info("[AgentStreamingEngine] 收到流式执行请求: requestId={}, appId={}, query={}", 
-                requestId, request.getAppId(), request.getQuery());
+        // 转义用户输入中的模板语法，防止 {{xxx}} 被当作模板变量解析
+        String query = escapeTemplateVariables(request.getQuery());
+
+        // 判断是否使用会话记忆：需要同时满足 sessionId 存在且会话记忆存在
+        String sessionId = request.getSessionId();
+        boolean useMemory = false;
+        
+        if (sessionId != null) {
+            useMemory = assistantFactory.sessionExists(sessionId);
+            if (useMemory) {
+                log.info("[AgentStreamingEngine] 找到已有会话记忆, sessionId={}", sessionId);
+            } else {
+                log.info("[AgentStreamingEngine] 会话记忆不存在，将创建新会话, sessionId={}", sessionId);
+            }
+        } else {
+            sessionId = java.util.UUID.randomUUID().toString();
+            log.info("[AgentStreamingEngine] 生成新会话ID, sessionId={}", sessionId);
+        }
+
+        log.info("[AgentStreamingEngine] 收到流式执行请求: requestId={}, appId={}, useMemory={}, query={}", 
+                requestId, request.getAppId(), useMemory, query);
 
         // 初始化工具执行上下文
         ToolExecutionContext.init();
@@ -68,17 +87,19 @@ public class AgentStreamingEngine {
 
         try {
             // 发送请求开始事件
-            eventConsumer.accept(StreamEvent.requestStart(requestId, request.getQuery()));
+            eventConsumer.accept(StreamEvent.requestStart(requestId, query));
 
             // 获取流式 Assistant
-            StreamingAgentAssistant assistant = getStreamingAssistant(request);
+            StreamingAgentAssistant assistant = getStreamingAssistant(request, useMemory);
             
             // 执行流式请求
             TokenStream tokenStream;
-            if (request.getSessionId() != null) {
-                tokenStream = assistant.chatStreamWithMemory(request.getQuery(), request.getSessionId());
+            if (useMemory) {
+                // 带记忆模式
+                tokenStream = assistant.chatStreamWithMemory(query);
             } else {
-                tokenStream = assistant.chatStream(request.getQuery());
+                // 无记忆模式
+                tokenStream = assistant.chatStream(query);
             }
 
             // 处理流式响应
@@ -154,17 +175,39 @@ public class AgentStreamingEngine {
 
     /**
      * 获取流式 Assistant
+     * @param request 请求
+     * @param useMemory 是否使用会话记忆
      */
-    private StreamingAgentAssistant getStreamingAssistant(AgentRequest request) {
+    private StreamingAgentAssistant getStreamingAssistant(AgentRequest request, boolean useMemory) {
         if (request.getAppId() != null) {
-            log.info("[AgentStreamingEngine] 使用应用专属流式模式, appId={}", request.getAppId());
-            return assistantFactory.getStreamingAssistantByAppId(request.getAppId(), request.getSessionId());
-        } else if (request.getSessionId() != null) {
-            log.info("[AgentStreamingEngine] 使用带记忆流式模式, sessionId={}", request.getSessionId());
-            return assistantFactory.getStreamingAssistantWithMemory(request.getSessionId());
+            if (useMemory) {
+                log.info("[AgentStreamingEngine] 使用应用专属记忆流式模式, appId={}, sessionId={}", 
+                        request.getAppId(), request.getSessionId());
+                return assistantFactory.getStreamingAssistantByAppId(request.getAppId(), request.getSessionId());
+            } else {
+                log.info("[AgentStreamingEngine] 使用应用专属无记忆流式模式, appId={}", request.getAppId());
+                return assistantFactory.getStreamingAssistantByAppId(request.getAppId());
+            }
         } else {
-            log.info("[AgentStreamingEngine] 使用默认流式模式");
-            return assistantFactory.getStreamingAssistant();
+            if (useMemory) {
+                log.info("[AgentStreamingEngine] 使用通用记忆流式模式, sessionId={}", request.getSessionId());
+                return assistantFactory.getStreamingAssistantWithMemory(request.getSessionId());
+            } else {
+                log.info("[AgentStreamingEngine] 使用通用无记忆流式模式");
+                return assistantFactory.getStreamingAssistant();
+            }
         }
+    }
+
+    /**
+     * 转义模板变量语法
+     * LangChain4j 会把 {{xxx}} 当作模板变量解析，需要转义防止误解析
+     */
+    private String escapeTemplateVariables(String input) {
+        if (input == null) {
+            return null;
+        }
+        // 将 {{ 替换为 { { ，避免被解析为模板变量
+        return input.replace("{{", "{ {").replace("}}", "} }");
     }
 }

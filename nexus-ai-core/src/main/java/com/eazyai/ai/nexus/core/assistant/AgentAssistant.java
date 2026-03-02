@@ -2,7 +2,6 @@ package com.eazyai.ai.nexus.core.assistant;
 
 import dev.langchain4j.service.SystemMessage;
 import dev.langchain4j.service.UserMessage;
-import dev.langchain4j.service.V;
 
 /**
  * 智能助手接口
@@ -33,11 +32,12 @@ public interface AgentAssistant {
     String chat(@UserMessage String userMessage);
 
     /**
-     * 带会话ID的对话（支持记忆）
+     * 带会话记忆的对话
+     * 注意：sessionId 通过 AiServices 的 ChatMemory 配置传递，不作为模板变量
      */
     @SystemMessage("""
         你是一个智能助手，可以使用工具完成任务。
-        
+
         工具使用规则：
         1. 当用户请求需要工具能力时，自动调用相应的工具
         2. 工具执行完成后，基于结果回答用户
@@ -45,7 +45,7 @@ public interface AgentAssistant {
         4. 用中文回答，简洁专业
         5. 记住之前的对话内容，保持上下文连贯
         """)
-    String chatWithMemory(@UserMessage String userMessage, @V("sessionId") String sessionId);
+    String chatWithMemory(@UserMessage String userMessage);
 
     /**
      * 带意图分析的对话

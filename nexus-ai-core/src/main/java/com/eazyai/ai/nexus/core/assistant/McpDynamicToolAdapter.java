@@ -9,6 +9,7 @@ import com.eazyai.ai.nexus.core.mcp.McpToolResult;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.agent.tool.ToolSpecification;
+import dev.langchain4j.model.chat.request.json.JsonArraySchema;
 import dev.langchain4j.model.chat.request.json.JsonObjectSchema;
 import dev.langchain4j.service.tool.ToolExecutor;
 import lombok.extern.slf4j.Slf4j;
@@ -104,13 +105,23 @@ public class McpDynamicToolAdapter implements ToolExecutor {
             String name = param.getName();
             String description = param.getDescription();
             
-            // 根据类型添加属性（array类型暂时降级为string处理）
+            // 根据类型添加属性
             String type = param.getType() != null ? param.getType().toLowerCase() : "string";
             switch (type) {
                 case "integer", "int", "long" -> schemaBuilder.addIntegerProperty(name, description);
                 case "number", "float", "double" -> schemaBuilder.addNumberProperty(name, description);
                 case "boolean", "bool" -> schemaBuilder.addBooleanProperty(name, description);
-                case "array", "list" -> schemaBuilder.addStringProperty(name, description); // 降级为string
+                case "array", "list" -> schemaBuilder.addProperty(name,
+                    JsonArraySchema.builder()
+                        .description(description)
+                        .items(JsonObjectSchema.builder()
+                            .description("数组元素")
+                            .build())
+                        .build());
+                case "object" -> schemaBuilder.addProperty(name,
+                    JsonObjectSchema.builder()
+                        .description(description)
+                        .build());
                 default -> schemaBuilder.addStringProperty(name, description);
             }
             

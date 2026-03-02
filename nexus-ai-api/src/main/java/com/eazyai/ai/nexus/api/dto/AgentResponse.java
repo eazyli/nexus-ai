@@ -23,6 +23,11 @@ public class AgentResponse implements Serializable {
     private static final long serialVersionUID = 1L;
 
     /**
+     * 会话ID，用于保持上下文
+     */
+    private String sessionId;
+
+    /**
      * 是否成功
      */
     @Builder.Default

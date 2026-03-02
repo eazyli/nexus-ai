@@ -21,7 +21,7 @@ public class AiMemoryRepository {
     public List<AiMemory> findBySessionId(String sessionId) {
         LambdaQueryWrapper<AiMemory> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(AiMemory::getSessionId, sessionId)
-               .orderByAsc(AiMemory::getCreateTime);
+               .orderByAsc(AiMemory::getId);
         return mapper.selectList(wrapper);
     }
 

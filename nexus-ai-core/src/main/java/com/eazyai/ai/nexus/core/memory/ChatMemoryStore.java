@@ -27,6 +27,17 @@ public interface ChatMemoryStore {
     void updateMessages(String sessionId, List<ChatMessage> messages);
 
     /**
+     * 更新会话消息（带上下文信息）
+     *
+     * @param sessionId 会话ID
+     * @param messages  消息列表
+     * @param context   存储上下文（包含appId、userId等）
+     */
+    default void updateMessages(String sessionId, List<ChatMessage> messages, MemoryContext context) {
+        updateMessages(sessionId, messages);
+    }
+
+    /**
      * 删除会话消息
      *
      * @param sessionId 会话ID
@@ -49,5 +60,31 @@ public interface ChatMemoryStore {
      */
     default void refreshSession(String sessionId) {
         // 默认空实现，子类可覆盖
+    }
+
+    /**
+     * 记忆存储上下文
+     * 包含会话关联的应用和用户信息
+     */
+    class MemoryContext {
+        private final String appId;
+        private final String userId;
+
+        public MemoryContext(String appId, String userId) {
+            this.appId = appId;
+            this.userId = userId;
+        }
+
+        public String getAppId() {
+            return appId;
+        }
+
+        public String getUserId() {
+            return userId;
+        }
+
+        public static MemoryContext of(String appId, String userId) {
+            return new MemoryContext(appId, userId);
+        }
     }
 }

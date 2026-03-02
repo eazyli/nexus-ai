@@ -48,6 +48,10 @@ public class JdbcChatMemoryStore implements ChatMemoryStore {
 
     @Override
     public void updateMessages(String sessionId, List<ChatMessage> messages) {
+        updateMessages(sessionId, messages, null);
+    }
+
+    public void updateMessages(String sessionId, List<ChatMessage> messages, ChatMemoryStore.MemoryContext context) {
         // 先删除旧消息
         aiMemoryRepository.deleteBySessionId(sessionId);
 
@@ -55,7 +59,7 @@ public class JdbcChatMemoryStore implements ChatMemoryStore {
         List<AiMemory> memories = new ArrayList<>();
         for (int i = 0; i < messages.size(); i++) {
             ChatMessage message = messages.get(i);
-            AiMemory memory = toAiMemory(sessionId, message, i);
+            AiMemory memory = toAiMemory(sessionId, message, i, context);
             memories.add(memory);
         }
 
@@ -134,12 +138,22 @@ public class JdbcChatMemoryStore implements ChatMemoryStore {
     /**
      * 将 ChatMessage 转换为 AiMemory
      */
-    private AiMemory toAiMemory(String sessionId, ChatMessage message, int order) {
+    private AiMemory toAiMemory(String sessionId, ChatMessage message, int order, ChatMemoryStore.MemoryContext context) {
         AiMemory memory = new AiMemory();
         memory.setSessionId(sessionId);
         memory.setMemoryType("short");
         memory.setCreateTime(LocalDateTime.now());
         memory.setUpdateTime(LocalDateTime.now());
+        
+        // 设置上下文信息（appId, userId）
+        if (context != null) {
+            memory.setAppId(context.getAppId() != null ? context.getAppId() : DEFAULT_APP_ID);
+            memory.setUserId(context.getUserId() != null ? context.getUserId() : DEFAULT_USER_ID);
+        } else {
+            // 使用默认值避免数据库 NOT NULL 约束错误
+            memory.setAppId(DEFAULT_APP_ID);
+            memory.setUserId(DEFAULT_USER_ID);
+        }
         
         // 设置过期时间（默认7天）
         memory.setExpireTime(LocalDateTime.now().plusDays(7));
@@ -151,7 +165,7 @@ public class JdbcChatMemoryStore implements ChatMemoryStore {
             case TOOL_EXECUTION_RESULT -> "tool";
         };
         memory.setRole(role);
-        memory.setContent(message.text());
+        memory.setContent(getTextFromMessage(message));
 
         // 处理特殊消息类型
         if (message instanceof AiMessage aiMessage) {
@@ -175,8 +189,27 @@ public class JdbcChatMemoryStore implements ChatMemoryStore {
         }
 
         // 估算token数量（简单估算：字符数/4）
-        memory.setTokenCount(message.text() != null ? message.text().length() / 4 : 0);
+        String content = getTextFromMessage(message);
+        memory.setTokenCount(content != null ? content.length() / 4 : 0);
 
         return memory;
+    }
+
+    // 默认值常量，用于没有上下文信息时
+    private static final String DEFAULT_APP_ID = "default";
+    private static final String DEFAULT_USER_ID = "anonymous";
+
+    /**
+     * 从 ChatMessage 获取文本内容（兼容新 API）
+     * ChatMessage.text() 已弃用，需要根据具体消息类型获取文本
+     */
+    private String getTextFromMessage(ChatMessage message) {
+        return switch (message) {
+            case AiMessage aiMessage -> aiMessage.text();
+            case UserMessage userMessage -> userMessage.singleText();
+            case SystemMessage systemMessage -> systemMessage.text();
+            case ToolExecutionResultMessage toolMessage -> toolMessage.text();
+            default -> null;
+        };
     }
 }

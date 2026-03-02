@@ -132,7 +132,7 @@ public class ToolController {
      */
     @GetMapping("/{toolId}")
     @Operation(summary = "获取工具详情", description = "根据工具ID获取工具详细信息")
-    public ResponseEntity<McpToolDescriptor> getTool(@PathVariable String toolId) {
+    public ResponseEntity<McpToolDescriptor> getTool(@PathVariable("toolId") String toolId) {
         return aiMcpToolRepository.findById(toolId)
                 .map(mcpToolConverter::toDescriptor)
                 .map(ResponseEntity::ok)
@@ -154,7 +154,7 @@ public class ToolController {
      */
     @GetMapping("/type/{type}")
     @Operation(summary = "根据类型查找工具", description = "查找指定类型的工具")
-    public ResponseEntity<List<McpToolDescriptor>> findByType(@PathVariable String type) {
+    public ResponseEntity<List<McpToolDescriptor>> findByType(@PathVariable("type") String type) {
         List<McpToolDescriptor> tools = aiMcpToolRepository.findByToolType(type.toUpperCase()).stream()
                 .filter(t -> t.getStatus() != null && t.getStatus() == 1)
                 .map(mcpToolConverter::toDescriptor)
@@ -167,7 +167,7 @@ public class ToolController {
      */
     @GetMapping("/app/{appId}")
     @Operation(summary = "根据应用ID查找工具", description = "查找指定应用下的所有工具")
-    public ResponseEntity<List<McpToolDescriptor>> findByAppId(@PathVariable String appId) {
+    public ResponseEntity<List<McpToolDescriptor>> findByAppId(@PathVariable("appId") String appId) {
         List<McpToolDescriptor> tools = aiMcpToolRepository.findByAppId(appId).stream()
                 .filter(t -> t.getStatus() != null && t.getStatus() == 1)
                 .map(mcpToolConverter::toDescriptor)
@@ -180,7 +180,7 @@ public class ToolController {
      */
     @DeleteMapping("/{toolId}")
     @Operation(summary = "注销工具", description = "注销指定的工具")
-    public ResponseEntity<Void> unregisterTool(@PathVariable String toolId) {
+    public ResponseEntity<Void> unregisterTool(@PathVariable("toolId") String toolId) {
         log.info("注销工具: {}", toolId);
         
         // 从数据库删除
@@ -197,7 +197,7 @@ public class ToolController {
     @PostMapping("/{toolId}/invoke")
     @Operation(summary = "执行工具", description = "执行指定工具并返回结果")
     public ResponseEntity<McpToolResult> invokeTool(
-            @PathVariable String toolId,
+            @PathVariable("toolId") String toolId,
             @RequestBody Map<String, Object> params) {
         log.info("执行工具: {} - params: {}", toolId, params);
         McpToolResult result = mcpToolBus.invoke(toolId, params, null);

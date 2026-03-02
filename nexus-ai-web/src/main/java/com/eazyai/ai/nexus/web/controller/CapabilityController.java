@@ -41,7 +41,7 @@ public class CapabilityController {
      */
     @GetMapping("/{capabilityId}")
     @Operation(summary = "获取能力详情", description = "根据能力ID获取能力详细信息")
-    public ResponseEntity<CapabilityDescriptor> getCapability(@PathVariable String capabilityId) {
+    public ResponseEntity<CapabilityDescriptor> getCapability(@PathVariable("capabilityId") String capabilityId) {
         return capabilityService.getCapability(capabilityId)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
@@ -62,7 +62,7 @@ public class CapabilityController {
      */
     @GetMapping("/type/{type}")
     @Operation(summary = "根据类型获取能力", description = "获取指定类型的所有能力")
-    public ResponseEntity<List<CapabilityDescriptor>> getCapabilitiesByType(@PathVariable String type) {
+    public ResponseEntity<List<CapabilityDescriptor>> getCapabilitiesByType(@PathVariable("type") String type) {
         List<CapabilityDescriptor> capabilities = capabilityService.getCapabilitiesByType(type);
         return ResponseEntity.ok(capabilities);
     }
@@ -73,7 +73,7 @@ public class CapabilityController {
     @PutMapping("/{capabilityId}")
     @Operation(summary = "更新能力", description = "更新指定能力的配置信息")
     public ResponseEntity<CapabilityDescriptor> updateCapability(
-            @PathVariable String capabilityId,
+            @PathVariable("capabilityId") String capabilityId,
             @Valid @RequestBody CapabilityDescriptor descriptor) {
         log.info("更新能力: {}", capabilityId);
         CapabilityDescriptor updated = capabilityService.updateCapability(capabilityId, descriptor);
@@ -85,7 +85,7 @@ public class CapabilityController {
      */
     @DeleteMapping("/{capabilityId}")
     @Operation(summary = "删除能力", description = "删除指定的能力")
-    public ResponseEntity<Void> deleteCapability(@PathVariable String capabilityId) {
+    public ResponseEntity<Void> deleteCapability(@PathVariable("capabilityId") String capabilityId) {
         log.info("删除能力: {}", capabilityId);
         capabilityService.deleteCapability(capabilityId);
         return ResponseEntity.noContent().build();
@@ -96,7 +96,7 @@ public class CapabilityController {
      */
     @PostMapping("/{capabilityId}/enable")
     @Operation(summary = "启用能力", description = "启用指定的能力")
-    public ResponseEntity<Void> enableCapability(@PathVariable String capabilityId) {
+    public ResponseEntity<Void> enableCapability(@PathVariable("capabilityId") String capabilityId) {
         log.info("启用能力: {}", capabilityId);
         capabilityService.enableCapability(capabilityId);
         return ResponseEntity.ok().build();
@@ -107,7 +107,7 @@ public class CapabilityController {
      */
     @PostMapping("/{capabilityId}/disable")
     @Operation(summary = "禁用能力", description = "禁用指定的能力")
-    public ResponseEntity<Void> disableCapability(@PathVariable String capabilityId) {
+    public ResponseEntity<Void> disableCapability(@PathVariable("capabilityId") String capabilityId) {
         log.info("禁用能力: {}", capabilityId);
         capabilityService.disableCapability(capabilityId);
         return ResponseEntity.ok().build();

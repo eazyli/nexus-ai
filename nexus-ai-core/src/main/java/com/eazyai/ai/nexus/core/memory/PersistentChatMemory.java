@@ -18,6 +18,7 @@ public class PersistentChatMemory implements ChatMemory {
     private final String sessionId;
     private final ChatMemoryStore store;
     private final int maxMessages;
+    private final ChatMemoryStore.MemoryContext context;
     
     // 内存中的消息缓存
     private List<ChatMessage> messages;
@@ -26,13 +27,18 @@ public class PersistentChatMemory implements ChatMemory {
     private boolean loaded = false;
 
     public PersistentChatMemory(String sessionId, ChatMemoryStore store) {
-        this(sessionId, store, 20);
+        this(sessionId, store, 20, null);
     }
 
     public PersistentChatMemory(String sessionId, ChatMemoryStore store, int maxMessages) {
+        this(sessionId, store, maxMessages, null);
+    }
+
+    public PersistentChatMemory(String sessionId, ChatMemoryStore store, int maxMessages, ChatMemoryStore.MemoryContext context) {
         this.sessionId = sessionId;
         this.store = store;
         this.maxMessages = maxMessages;
+        this.context = context;
         this.messages = new ArrayList<>();
     }
 
@@ -108,7 +114,11 @@ public class PersistentChatMemory implements ChatMemory {
      * 持久化到存储
      */
     private void persist() {
-        store.updateMessages(sessionId, messages);
+        if (context != null) {
+            store.updateMessages(sessionId, messages, context);
+        } else {
+            store.updateMessages(sessionId, messages);
+        }
         log.debug("[PersistentChatMemory] 持久化消息: sessionId={}, count={}", 
             sessionId, messages.size());
     }

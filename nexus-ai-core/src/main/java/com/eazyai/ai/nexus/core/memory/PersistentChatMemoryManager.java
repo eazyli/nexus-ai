@@ -125,7 +125,7 @@ public class PersistentChatMemoryManager {
      * @return ChatMemory实例
      */
     public ChatMemory getOrCreateMemory(String sessionId) {
-        return getOrCreateMemory(sessionId, sessionProperties.getDefaultMemoryWindow());
+        return getOrCreateMemory(sessionId, sessionProperties.getDefaultMemoryWindow(), null);
     }
 
     /**
@@ -136,18 +136,41 @@ public class PersistentChatMemoryManager {
      * @return ChatMemory实例
      */
     public ChatMemory getOrCreateMemory(String sessionId, int maxMessages) {
+        return getOrCreateMemory(sessionId, maxMessages, null);
+    }
+
+    /**
+     * 获取或创建会话记忆（带上下文信息）
+     *
+     * @param sessionId   会话ID
+     * @param maxMessages 最大消息数
+     * @param context     存储上下文（包含appId、userId等）
+     * @return ChatMemory实例
+     */
+    public ChatMemory getOrCreateMemory(String sessionId, int maxMessages, ChatMemoryStore.MemoryContext context) {
         // 检查最大会话数限制
         checkMaxSessions();
 
         SessionWrapper wrapper = memoryCache.computeIfAbsent(sessionId, 
             id -> new SessionWrapper(
-                new PersistentChatMemory(id, chatMemoryStore, maxMessages),
+                new PersistentChatMemory(id, chatMemoryStore, maxMessages, context),
                 System.currentTimeMillis()
             ));
         
         // 更新最后访问时间
         wrapper.updateAccessTime();
         return wrapper.getMemory();
+    }
+
+    /**
+     * 获取或创建会话记忆（带上下文信息）
+     *
+     * @param sessionId 会话ID
+     * @param context   存储上下文（包含appId、userId等）
+     * @return ChatMemory实例
+     */
+    public ChatMemory getOrCreateMemory(String sessionId, ChatMemoryStore.MemoryContext context) {
+        return getOrCreateMemory(sessionId, sessionProperties.getDefaultMemoryWindow(), context);
     }
 
     /**

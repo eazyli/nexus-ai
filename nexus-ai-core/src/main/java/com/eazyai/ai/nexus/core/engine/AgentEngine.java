@@ -59,19 +59,39 @@ public class AgentEngine {
     /**
      * 执行请求（简单模式）
      * 使用 LangChain4j AiServices 自动处理工具调用
+     * 
+     * 会话记忆逻辑：
+     * - 始终使用会话记忆模式，确保多轮对话上下文连续
+     * - 新会话：生成 sessionId 并创建空记忆
+     * - 已有会话：加载历史记忆
      */
     public AgentResponse execute(AgentRequest request) {
         long startTime = System.currentTimeMillis();
         String requestId = java.util.UUID.randomUUID().toString();
+        
+        // 转义用户输入中的模板语法，防止 {{xxx}} 被当作模板变量解析
+        String query = escapeTemplateVariables(request.getQuery());
+        
+        // 处理 sessionId：始终使用会话记忆模式
+        String sessionId = request.getSessionId();
+        boolean isNewSession = (sessionId == null);
+        
+        if (isNewSession) {
+            sessionId = java.util.UUID.randomUUID().toString();
+            log.info("[AgentEngine] 生成新会话ID, sessionId={}", sessionId);
+        } else {
+            log.info("[AgentEngine] 使用已有会话ID, sessionId={}", sessionId);
+        }
 
-        log.info("[AgentEngine] 收到执行请求: appId={}, query={}", request.getAppId(), request.getQuery());
+        log.info("[AgentEngine] 执行请求: appId={}, isNewSession={}, sessionId={}, query={}", 
+                request.getAppId(), isNewSession, sessionId, query);
 
         // 初始化工具执行上下文
         ToolExecutionContext.init();
 
         AgentContext context = AgentContext.builder()
                 .requestId(requestId)
-                .sessionId(request.getSessionId())
+                .sessionId(sessionId)
                 .userInput(request.getQuery())
                 .currentStage(AgentContext.ExecutionStage.INTENT_ANALYSIS)
                 .build();
@@ -81,30 +101,21 @@ public class AgentEngine {
         try {
             publishEvent(AgentEvent.create(requestId, AgentEvent.EventType.REQUEST_START)
                     .stage("start")
-                    .data(Map.of("query", request.getQuery(), "appId", request.getAppId()))
+                    .data(Map.of("query", request.getQuery(), "appId", request.getAppId(), "sessionId", sessionId))
                     .build());
 
-            // 使用 LangChain4j AiServices 执行
+            // 使用 LangChain4j AiServices 执行（始终使用会话记忆模式）
             String result;
             if (request.getAppId() != null) {
-                // 按应用ID加载专属工具
-                log.info("[AgentEngine] 使用应用专属模式, appId={}", request.getAppId());
-                AgentAssistant assistant = assistantFactory.getAssistantByAppId(request.getAppId(), request.getSessionId());
-                if (request.getSessionId() != null) {
-                    result = assistant.chatWithMemory(request.getQuery(), request.getSessionId());
-                } else {
-                    result = assistant.chat(request.getQuery());
-                }
-            } else if (request.getSessionId() != null) {
-                // 带会话记忆（无应用ID）
-                log.info("[AgentEngine] 使用带记忆模式, sessionId={}", request.getSessionId());
-                AgentAssistant assistant = assistantFactory.getAssistantWithMemory(request.getSessionId());
-                result = assistant.chatWithMemory(request.getQuery(), request.getSessionId());
+                // 应用专属 + 会话记忆
+                log.info("[AgentEngine] 使用应用专属记忆模式, appId={}, sessionId={}", request.getAppId(), sessionId);
+                AgentAssistant assistant = assistantFactory.getAssistantByAppId(request.getAppId(), sessionId);
+                result = assistant.chatWithMemory(query);
             } else {
-                // 无记忆（无应用ID）
-                log.info("[AgentEngine] 使用默认模式（无应用ID、无记忆）");
-                AgentAssistant assistant = assistantFactory.getAssistant();
-                result = assistant.chat(request.getQuery());
+                // 通用 + 会话记忆
+                log.info("[AgentEngine] 使用通用记忆模式, sessionId={}", sessionId);
+                AgentAssistant assistant = assistantFactory.getAssistantWithMemory(sessionId);
+                result = assistant.chatWithMemory(query);
             }
 
             log.info("[AgentEngine] 执行完成, 结果长度: {}", result != null ? result.length() : 0);
@@ -117,6 +128,7 @@ public class AgentEngine {
                 toolContext.getUsedPlugins(), toolContext.getExecutionSteps().size());
 
             AgentResponse response = AgentResponse.builder()
+                    .sessionId(sessionId)
                     .output(result)
                     .success(true)
                     .executionTime(System.currentTimeMillis() - startTime)
@@ -261,6 +273,18 @@ public class AgentEngine {
                 }
             }
         }
+    }
+
+    /**
+     * 转义模板变量语法
+     * LangChain4j 会把 {{xxx}} 当作模板变量解析，需要转义防止误解析
+     */
+    private String escapeTemplateVariables(String input) {
+        if (input == null) {
+            return null;
+        }
+        // 将 {{ 替换为 { { ，避免被解析为模板变量
+        return input.replace("{{", "{ {").replace("}}", "} }");
     }
 
     /**

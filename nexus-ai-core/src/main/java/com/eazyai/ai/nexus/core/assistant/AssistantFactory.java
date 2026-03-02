@@ -5,6 +5,7 @@ import com.eazyai.ai.nexus.api.plugin.PluginDescriptor;
 import com.eazyai.ai.nexus.api.registry.PluginRegistry;
 import com.eazyai.ai.nexus.core.mcp.McpToolBus;
 import com.eazyai.ai.nexus.core.mcp.McpToolDescriptor;
+import com.eazyai.ai.nexus.core.memory.ChatMemoryStore;
 import com.eazyai.ai.nexus.core.memory.PersistentChatMemoryManager;
 
 import dev.langchain4j.agent.tool.ToolSpecification;
@@ -228,8 +229,28 @@ public class AssistantFactory implements SmartInitializingSingleton {
             throw new IllegalStateException("ChatLanguageModel 未配置");
         }
 
-        // 使用持久化存储的 ChatMemory
+        // 使用持久化存储的 ChatMemory（无 appId 上下文）
         ChatMemory memory = persistentChatMemoryManager.getOrCreateMemory(sessionId);
+
+        return AiServices.builder(AgentAssistant.class)
+            .chatLanguageModel(chatModel)
+            .chatMemory(memory)
+            .tools(cachedTools)
+            .build();
+    }
+
+    /**
+     * 获取带会话记忆的 Assistant（带应用上下文）
+     * 使用持久化存储保存会话记忆
+     */
+    public AgentAssistant getAssistantWithMemory(String sessionId, String appId) {
+        if (chatModel == null) {
+            throw new IllegalStateException("ChatLanguageModel 未配置");
+        }
+
+        // 使用持久化存储的 ChatMemory（带 appId 上下文）
+        ChatMemoryStore.MemoryContext context = ChatMemoryStore.MemoryContext.of(appId, null);
+        ChatMemory memory = persistentChatMemoryManager.getOrCreateMemory(sessionId, context);
 
         return AiServices.builder(AgentAssistant.class)
             .chatLanguageModel(chatModel)
@@ -284,8 +305,9 @@ public class AssistantFactory implements SmartInitializingSingleton {
             });
         }
 
-        // 需要会话记忆的，创建新实例但使用持久化的 ChatMemory
-        ChatMemory memory = persistentChatMemoryManager.getOrCreateMemory(sessionId);
+        // 需要会话记忆的，创建新实例但使用持久化的 ChatMemory（带 appId 上下文）
+        ChatMemoryStore.MemoryContext context = ChatMemoryStore.MemoryContext.of(appId, null);
+        ChatMemory memory = persistentChatMemoryManager.getOrCreateMemory(sessionId, context);
         
         var builder = AiServices.builder(AgentAssistant.class)
             .chatLanguageModel(chatModel)
@@ -489,5 +511,12 @@ public class AssistantFactory implements SmartInitializingSingleton {
      */
     public int getCachedStreamingAssistantCount() {
         return streamingAssistantCache.size();
+    }
+
+    /**
+     * 检查会话是否存在
+     */
+    public boolean sessionExists(String sessionId) {
+        return persistentChatMemoryManager.exists(sessionId);
     }
 }

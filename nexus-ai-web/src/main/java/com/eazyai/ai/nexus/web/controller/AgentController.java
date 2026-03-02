@@ -57,6 +57,7 @@ public class AgentController {
         AgentResponse response = agentEngine.execute(agentRequest);
 
         return AgentExecuteResponse.builder()
+                .sessionId(response.getSessionId())
                 .success(response.isSuccess())
                 .output(response.getOutput())
                 .structuredOutput(response.getStructuredOutput())
@@ -82,7 +83,7 @@ public class AgentController {
      */
     @GetMapping("/plugins/type/{type}")
     @Operation(summary = "按类型获取插件", description = "根据类型筛选插件")
-    public List<PluginInfo> getPluginsByType(@PathVariable String type) {
+    public List<PluginInfo> getPluginsByType(@PathVariable("type") String type) {
         return pluginRegistry.findByType(type).stream()
                 .map(p -> new PluginInfo(p.getDescriptor()))
                 .collect(Collectors.toList());
@@ -93,7 +94,7 @@ public class AgentController {
      */
     @GetMapping("/plugins/capability/{capability}")
     @Operation(summary = "按能力获取插件", description = "根据能力筛选插件")
-    public List<PluginInfo> getPluginsByCapability(@PathVariable String capability) {
+    public List<PluginInfo> getPluginsByCapability(@PathVariable("capability") String capability) {
         return pluginRegistry.findByCapability(capability).stream()
                 .map(p -> new PluginInfo(p.getDescriptor()))
                 .collect(Collectors.toList());

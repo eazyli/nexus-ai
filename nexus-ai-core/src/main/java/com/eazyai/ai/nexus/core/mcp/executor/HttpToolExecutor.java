@@ -16,6 +16,7 @@ import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
 import java.time.Duration;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
@@ -42,8 +43,8 @@ public class HttpToolExecutor {
     private final NexusProperties.HttpProperties httpProperties;
     private final Map<String, Retry> retryRegistry = new ConcurrentHashMap<>();
 
-    // 参数占位符匹配模式 #{paramName}
-    private static final Pattern PARAM_PATTERN = Pattern.compile("#\\{(\\w+)}");
+    // 参数占位符匹配模式: #{paramName} 或 {paramName}
+    private static final Pattern PARAM_PATTERN = Pattern.compile("#?\\{(\\w+)}");
 
     public HttpToolExecutor(
             @Qualifier("toolRestTemplate") RestTemplate restTemplate,
@@ -291,4 +292,5 @@ public class HttpToolExecutor {
         matcher.appendTail(result);
         return result.toString();
     }
+
 }

@@ -41,7 +41,7 @@ public class AppController {
      */
     @GetMapping("/{appId}")
     @Operation(summary = "获取应用详情", description = "根据应用ID获取应用详细信息")
-    public ResponseEntity<AppDescriptor> getApp(@PathVariable String appId) {
+    public ResponseEntity<AppDescriptor> getApp(@PathVariable("appId") String appId) {
         return appService.getApp(appId)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
@@ -63,7 +63,7 @@ public class AppController {
     @PutMapping("/{appId}")
     @Operation(summary = "更新应用", description = "更新指定应用的配置信息")
     public ResponseEntity<AppDescriptor> updateApp(
-            @PathVariable String appId,
+            @PathVariable("appId") String appId,
             @Valid @RequestBody AppDescriptor descriptor) {
         log.info("更新应用: {}", appId);
         AppDescriptor updated = appService.updateApp(appId, descriptor);
@@ -75,7 +75,7 @@ public class AppController {
      */
     @DeleteMapping("/{appId}")
     @Operation(summary = "删除应用", description = "删除指定的应用")
-    public ResponseEntity<Void> deleteApp(@PathVariable String appId) {
+    public ResponseEntity<Void> deleteApp(@PathVariable("appId") String appId) {
         log.info("删除应用: {}", appId);
         appService.deleteApp(appId);
         return ResponseEntity.noContent().build();
@@ -86,7 +86,7 @@ public class AppController {
      */
     @PostMapping("/{appId}/enable")
     @Operation(summary = "启用应用", description = "启用指定的应用")
-    public ResponseEntity<Void> enableApp(@PathVariable String appId) {
+    public ResponseEntity<Void> enableApp(@PathVariable("appId") String appId) {
         log.info("启用应用: {}", appId);
         appService.enableApp(appId);
         return ResponseEntity.ok().build();
@@ -97,7 +97,7 @@ public class AppController {
      */
     @PostMapping("/{appId}/disable")
     @Operation(summary = "禁用应用", description = "禁用指定的应用")
-    public ResponseEntity<Void> disableApp(@PathVariable String appId) {
+    public ResponseEntity<Void> disableApp(@PathVariable("appId") String appId) {
         log.info("禁用应用: {}", appId);
         appService.disableApp(appId);
         return ResponseEntity.ok().build();

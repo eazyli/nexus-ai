@@ -3,6 +3,8 @@ package com.eazyai.ai.nexus.core.memory;
 import com.eazyai.ai.nexus.api.memory.MemoryManager;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
+import dev.langchain4j.data.message.SystemMessage;
+import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.memory.ChatMemory;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
@@ -156,7 +158,21 @@ public class LangChain4jMemoryManager implements MemoryManager {
             case SYSTEM -> "system";
             case TOOL_EXECUTION_RESULT -> "tool";
         };
-        return new MessageHistoryImpl(role, message.text(), System.currentTimeMillis());
+        return new MessageHistoryImpl(role, getTextFromMessage(message), System.currentTimeMillis());
+    }
+
+    /**
+     * 从 ChatMessage 获取文本内容（兼容新 API）
+     * ChatMessage.text() 已弃用，需要根据具体消息类型获取文本
+     */
+    private String getTextFromMessage(ChatMessage message) {
+        return switch (message) {
+            case AiMessage aiMessage -> aiMessage.text();
+            case UserMessage userMessage -> userMessage.singleText();
+            case SystemMessage systemMessage -> systemMessage.text();
+            case ToolExecutionResultMessage toolMessage -> toolMessage.text();
+            default -> null;
+        };
     }
 
     /**

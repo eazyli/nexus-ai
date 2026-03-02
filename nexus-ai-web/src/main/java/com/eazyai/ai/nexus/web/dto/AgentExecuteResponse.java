@@ -21,6 +21,9 @@ import java.util.Map;
 @Schema(description = "智能体执行响应")
 public class AgentExecuteResponse {
 
+    @Schema(description = "会话ID，用于保持上下文，后续请求传入相同的sessionId可保持对话上下文")
+    private String sessionId;
+
     @Schema(description = "是否执行成功")
     private boolean success;
 
