@@ -404,6 +404,323 @@ curl -X POST http://localhost:8088/api/v1/agent/execute \
        │                    │───────────────────►│
 ```
 
+## 使用案例：工具管理应用
+
+本案例展示如何创建一个"工具管理应用"，通过AI对话方式实现工具的批量导入。
+
+### 案例背景
+
+在实际项目中，经常需要为业务应用批量导入大量工具（如将Apifox导出的接口文档转为工具）。传统做法是：
+1. 手动逐个注册工具
+2. 或编写脚本批量调用注册接口
+
+本案例展示了更优雅的方案：**通过创建一个"工具管理应用"，让AI帮助完成批量导入工作**。
+
+### 核心思想
+
+```
+AI平台的核心价值：
+- 不是"我实现所有功能"，而是"我能调用所有能力"
+- 平台提供"大脑"（智能调度），能力可以来自任何地方
+- 任何功能只要能提供HTTP接口，就能成为AI的能力
+```
+
+### 系统新增接口
+
+本系统已新增以下两个接口，用于支持工具批量导入：
+
+| 接口 | 方法 | 说明 |
+|------|------|------|
+| `/api/v1/tools/parse-apifox` | POST | 解析Apifox/OpenAPI文档，转换为工具定义列表 |
+| `/api/v1/tools/batch-import` | POST | 批量导入工具到指定应用 |
+
+### 创建工具管理应用
+
+通过调用系统原有接口创建"工具管理助手"应用：
+
+#### 步骤1：创建应用（调用 `/api/v1/apps`）
+
+```bash
+curl -X POST http://localhost:8088/api/v1/apps \
+  -H "Content-Type: application/json" \
+  -d '{
+    "appId": "tool-manager",
+    "name": "工具管理助手",
+    "description": "AI工具管理助手，支持解析Apifox文档并批量导入工具到其他应用",
+    "type": "agent",
+    "config": {
+      "systemPrompt": "你是一个工具管理助手。你可以帮助用户：\n1. 解析Apifox导出的OpenAPI文档\n2. 将解析出的接口批量导入为工具\n3. 管理各应用的工具配置\n\n当用户提供Apifox文档时，你会解析文档内容并生成工具定义。\n当用户要求批量导入工具时，你会调用批量导入接口完成操作。\n请友好、专业地与用户交互，并在操作完成后提供清晰的反馈。"
+    },
+    "enabled": true
+  }'
+```
+
+#### 步骤2：注册工具 - 解析Apifox文档（调用 `/api/v1/tools/http`）
+
+将本系统新增的 `parse-apifox` 接口注册为工具：
+
+```bash
+curl -X POST http://localhost:8088/api/v1/tools/http \
+  -H "Content-Type: application/json" \
+  -d '{
+    "appId": "tool-manager",
+    "name": "parseApifox",
+    "description": "解析Apifox导出的OpenAPI文档，将API端点转换为工具定义",
+    "url": "http://localhost:8088/api/v1/tools/parse-apifox",
+    "method": "POST",
+    "headers": {"Content-Type": "application/json"},
+    "capabilities": ["parse", "apifox", "openapi"],
+    "parameters": [
+      {
+        "name": "documentContent",
+        "type": "string",
+        "description": "Apifox导出的OpenAPI JSON文档内容",
+        "required": true
+      },
+      {
+        "name": "baseUrl",
+        "type": "string",
+        "description": "基础URL，用于拼接接口路径，如 http://api.example.com",
+        "required": false
+      },
+      {
+        "name": "includeTags",
+        "type": "array",
+        "description": "只解析指定标签的接口",
+        "required": false
+      },
+      {
+        "name": "excludeTags",
+        "type": "array",
+        "description": "排除指定标签的接口",
+        "required": false
+      }
+    ],
+    "timeout": 60000,
+    "retryTimes": 1
+  }'
+```
+
+#### 步骤3：注册工具 - 批量导入工具（调用 `/api/v1/tools/http`）
+
+将本系统新增的 `batch-import` 接口注册为工具：
+
+```bash
+curl -X POST http://localhost:8088/api/v1/tools/http \
+  -H "Content-Type: application/json" \
+  -d '{
+    "appId": "tool-manager",
+    "name": "batchImportTools",
+    "description": "批量导入工具到指定应用",
+    "url": "http://localhost:8088/api/v1/tools/batch-import",
+    "method": "POST",
+    "headers": {"Content-Type": "application/json"},
+    "capabilities": ["import", "batch", "tools"],
+    "parameters": [
+      {
+        "name": "targetAppId",
+        "type": "string",
+        "description": "目标应用ID，要将工具导入到哪个应用",
+        "required": true
+      },
+      {
+        "name": "tools",
+        "type": "array",
+        "description": "工具定义列表，每个元素包含name、description、url、method、parameters等字段",
+        "required": true
+      },
+      {
+        "name": "overwrite",
+        "type": "boolean",
+        "description": "是否覆盖已存在的同名工具，默认false",
+        "required": false
+      }
+    ],
+    "timeout": 60000,
+    "retryTimes": 1
+  }'
+```
+
+#### 步骤4：注册工具 - 获取应用列表（调用 `/api/v1/tools/http`）
+
+将系统的 `listApps` 接口注册为工具：
+
+```bash
+curl -X POST http://localhost:8088/api/v1/tools/http \
+  -H "Content-Type: application/json" \
+  -d '{
+    "appId": "tool-manager",
+    "name": "listApps",
+    "description": "获取所有应用列表，用于了解系统中有哪些应用可以导入工具",
+    "url": "http://localhost:8088/api/v1/apps",
+    "method": "GET",
+    "headers": {"Content-Type": "application/json"},
+    "capabilities": ["query", "apps"],
+    "timeout": 30000
+  }'
+```
+
+#### 步骤5：注册工具 - 获取应用工具列表（调用 `/api/v1/tools/http`）
+
+将系统的 `listAppTools` 接口注册为工具：
+
+```bash
+curl -X POST http://localhost:8088/api/v1/tools/http \
+  -H "Content-Type: application/json" \
+  -d '{
+    "appId": "tool-manager",
+    "name": "listAppTools",
+    "description": "获取指定应用下的所有工具列表",
+    "url": "http://localhost:8088/api/v1/tools/app/{appId}",
+    "method": "GET",
+    "headers": {"Content-Type": "application/json"},
+    "capabilities": ["query", "tools"],
+    "parameters": [
+      {
+        "name": "appId",
+        "type": "string",
+        "description": "应用ID，要查询哪个应用的工具列表",
+        "required": true
+      }
+    ],
+    "timeout": 30000
+  }'
+```
+
+#### 步骤6：验证创建结果
+
+```bash
+# 查看创建的应用
+curl http://localhost:8088/api/v1/apps/tool-manager
+
+# 查看应用的工具列表
+curl http://localhost:8088/api/v1/tools/app/tool-manager
+```
+
+### 使用工具管理应用
+
+创建完成后，即可与工具管理助手对话：
+
+```bash
+# 查看系统中的应用
+curl -X POST http://localhost:8088/api/v1/agent/execute \
+  -H "Content-Type: application/json" \
+  -d '{
+    "appId": "tool-manager",
+    "query": "帮我查看系统中有哪些应用"
+  }'
+
+# 解析并导入工具（需要在对话中提供Apifox文档）
+curl -X POST http://localhost:8088/api/v1/agent/execute \
+  -H "Content-Type: application/json" \
+  -d '{
+    "appId": "tool-manager",
+    "query": "这是Apifox导出的接口文档，请解析并批量导入到wenhuagong应用",
+    "context": {
+      "apifoxDocument": "{...OpenAPI JSON文档...}"
+    }
+  }'
+```
+
+### 工作流程图
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                     用户与工具管理助手对话                          │
+└──────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+用户: "帮我解析这份Apifox文档，然后导入到wenhuagong应用"
+                                │
+                                ▼
+┌──────────────────────────────────────────────────────────────────┐
+│ AI理解意图，决定调用工具：parseApifox                              │
+│ 参数: {documentContent: "...", baseUrl: "http://api.example.com"}│
+└──────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌──────────────────────────────────────────────────────────────────┐
+│ parseApifox工具执行                                               │
+│ 调用: POST /api/v1/tools/parse-apifox                            │
+│ 返回: 解析出的工具定义列表                                          │
+└──────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌──────────────────────────────────────────────────────────────────┐
+│ AI分析解析结果，决定调用工具：batchImportTools                      │
+│ 参数: {targetAppId: "wenhuagong", tools: [...]}                  │
+└──────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌──────────────────────────────────────────────────────────────────┐
+│ batchImportTools工具执行                                          │
+│ 调用: POST /api/v1/tools/batch-import                            │
+│ 返回: 导入结果统计                                                  │
+└──────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+AI: "已成功解析15个接口，并导入到wenhuagong应用。成功导入15个工具。"
+```
+
+### 新增API接口
+
+| 接口 | 方法 | 说明 |
+|------|------|------|
+| `/api/v1/tools/parse-apifox` | POST | 解析Apifox/OpenAPI文档 |
+| `/api/v1/tools/batch-import` | POST | 批量导入工具 |
+
+#### 解析Apifox文档
+
+```bash
+POST /api/v1/tools/parse-apifox
+Content-Type: application/json
+
+{
+  "documentContent": "{...OpenAPI JSON文档...}",
+  "baseUrl": "http://api.example.com",
+  "includeTags": ["用户管理", "订单管理"],
+  "excludeTags": ["内部接口"]
+}
+```
+
+#### 批量导入工具
+
+```bash
+POST /api/v1/tools/batch-import
+Content-Type: application/json
+
+{
+  "targetAppId": "wenhuagong",
+  "tools": [
+    {
+      "name": "getUserInfo",
+      "description": "获取用户信息",
+      "url": "http://api.example.com/user/info",
+      "method": "GET",
+      "parameters": [
+        {"name": "userId", "type": "string", "description": "用户ID", "required": true}
+      ]
+    }
+  ],
+  "overwrite": true
+}
+```
+
+### 架构优势
+
+1. **平台无需感知具体功能**：平台只提供工具注册和调度能力
+2. **能力可插拔**：工具可以指向内部API，也可以指向外部系统
+3. **AI增强用户体验**：用户用自然语言描述需求，AI完成复杂操作
+4. **易于扩展**：新增功能只需注册新工具，无需修改平台代码
+
+### 扩展方向
+
+这个案例可以进一步扩展：
+- 支持更多文档格式（Postman、Swagger YAML）
+- 增加工具测试功能
+- 支持工具版本管理
+- 工具使用情况统计分析
+
 ## 技术栈
 
 | 组件 | 版本 | 说明 |
