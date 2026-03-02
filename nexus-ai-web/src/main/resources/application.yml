@@ -22,8 +22,8 @@ spring:
   ai:
     openai:
       # 使用环境变量配置API Key，支持DeepSeek、OpenAI等兼容接口
-      api-key: ${OPENAI_API_KEY:your-api-key-here}
-      base-url: ${OPENAI_BASE_URL:https://api.openai.com}
+      api-key: sk-a281867ccc764d4594fecb77db9fc2fb
+      base-url: https://api.deepseek.com
       chat:
         options:
           model: deepseek-chat
@@ -36,7 +36,7 @@ mybatis-plus:
   type-aliases-package: com.eazyai.ai.nexus.infra.dal.entity
   configuration:
     map-underscore-to-camel-case: true
-    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+    # log-impl: org.apache.ibatis.logging.stdout.StdOutImpl  # 调试时关闭SQL日志
   global-config:
     db-config:
       id-type: assign_id

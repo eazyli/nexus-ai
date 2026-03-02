@@ -26,24 +26,87 @@ public class SearchPlugin implements Plugin {
                 .name("Search Plugin")
                 .version("1.0.0")
                 .type("search")
-                .description("搜索插件，提供信息检索能力")
+                .description("网络搜索插件，提供实时信息检索能力，用于获取最新的网络信息")
                 .author("AI Agent Team")
-                .capabilities(List.of("search", "retrieval", "information"))
+                .capabilities(List.of("search", "retrieval", "information", "web"))
                 .parameters(List.of(
                         PluginDescriptor.ParameterDef.builder()
                                 .name("keywords")
                                 .type("string")
-                                .description("搜索关键词")
+                                .description("搜索关键词，建议使用简洁、精确的关键词")
                                 .required(true)
+                                .example("Spring AI最新版本特性")
                                 .build(),
                         PluginDescriptor.ParameterDef.builder()
                                 .name("limit")
                                 .type("integer")
-                                .description("返回结果数量")
+                                .description("返回结果数量限制")
                                 .required(false)
                                 .defaultValue(5)
+                                .validation(Map.of("min", 1, "max", 20))
+                                .example(3)
                                 .build()
                 ))
+                // 触发条件
+                .triggerConditions("""
+                        当用户问题满足以下条件之一时，应调用此工具：
+                        1. 需要获取最新的新闻、事件或实时信息
+                        2. 问题涉及近期发生的动态或变化（如"最近"、"最新"）
+                        3. 本地知识库或RAG检索无法找到相关信息
+                        4. 用户明确要求搜索或联网查询
+                        5. 需要验证某个信息的准确性或时效性
+                        """)
+                // 使用指导
+                .guidance("""
+                        最佳实践：
+                        1. 关键词应简洁、精确，避免过长或过于复杂的查询语句
+                        2. 建议将用户问题转化为2-5个核心关键词
+                        3. 对于专业领域问题，建议添加领域限定词
+                        4. limit建议设置为3-5个，避免信息过载
+                        5. 搜索结果应进行筛选和总结，提取最相关的内容
+                        6. 若搜索结果不理想，可尝试调整关键词重新搜索
+                        """)
+                // 使用示例
+                .examples(List.of(
+                        PluginDescriptor.UsageExample.builder()
+                                .scenario("查询最新信息")
+                                .userInput("2024年AI领域有哪些重要进展？")
+                                .toolArguments(Map.of(
+                                        "keywords", "2024 AI 人工智能 进展",
+                                        "limit", 5
+                                ))
+                                .expectedOutput("返回2024年AI领域的重要新闻和发展")
+                                .notes("包含时间限定词，确保搜索结果时效性")
+                                .build(),
+                        PluginDescriptor.UsageExample.builder()
+                                .scenario("补充知识库信息")
+                                .userInput("RAG技术最近有什么新论文？")
+                                .toolArguments(Map.of(
+                                        "keywords", "RAG 检索增强生成 论文 2024",
+                                        "limit", 3
+                                ))
+                                .expectedOutput("返回RAG相关的最新学术研究")
+                                .notes("当知识库信息可能过时时，使用网络搜索补充")
+                                .build()
+                ))
+                // 工具协作
+                .preRequisiteTools(List.of()) // 无前置工具
+                .followUpTools(List.of("rag_retriever")) // 可能需要结合知识库进行对比
+                // 错误处理
+                .errorHandling("""
+                        常见错误及处理：
+                        1. 关键词为空：提示用户需要提供搜索内容
+                        2. 无搜索结果：建议：
+                           - 尝试简化关键词
+                           - 使用更通用的搜索词
+                           - 检查关键词拼写
+                        3. 网络超时：建议稍后重试或使用其他信息源
+                        4. 结果质量差：建议调整关键词重新搜索
+                        """)
+                // 执行特性
+                .idempotent(true)
+                .priority(15)
+                .estimatedDuration(2000L)
                 .config(Map.of())
                 .enabled(true)
                 .build();

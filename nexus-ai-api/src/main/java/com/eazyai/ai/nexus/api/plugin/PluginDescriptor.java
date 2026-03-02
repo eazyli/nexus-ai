@@ -98,5 +98,109 @@ public class PluginDescriptor implements Serializable {
         private String description;
         private boolean required;
         private Object defaultValue;
+        /**
+         * 参数验证规则（如：min、max、pattern）
+         */
+        private Map<String, Object> validation;
+        /**
+         * 参数示例值
+         */
+        private Object example;
+        /**
+         * 参数可选值列表
+         */
+        private List<Object> options;
+    }
+
+    // ==================== 增强的工具指导信息 ====================
+
+    /**
+     * 触发条件
+     * 描述何时应该使用此工具
+     */
+    private String triggerConditions;
+
+    /**
+     * 使用指导
+     * 详细的使用说明和最佳实践
+     */
+    private String guidance;
+
+    /**
+     * 使用示例
+     */
+    @Builder.Default
+    private List<UsageExample> examples = new ArrayList<>();
+
+    /**
+     * 前置工具
+     * 使用此工具前应先调用的工具
+     */
+    @Builder.Default
+    private List<String> preRequisiteTools = new ArrayList<>();
+
+    /**
+     * 后续工具
+     * 调用此工具后通常会接着使用的工具
+     */
+    @Builder.Default
+    private List<String> followUpTools = new ArrayList<>();
+
+    /**
+     * 错误处理建议
+     */
+    private String errorHandling;
+
+    /**
+     * 工具优先级（数值越大优先级越高）
+     */
+    @Builder.Default
+    private int priority = 0;
+
+    /**
+     * 是否幂等（可重复调用）
+     */
+    @Builder.Default
+    private boolean idempotent = true;
+
+    /**
+     * 估计执行时间（毫秒）
+     */
+    private Long estimatedDuration;
+
+    /**
+     * 使用示例
+     */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class UsageExample implements Serializable {
+        private static final long serialVersionUID = 1L;
+
+        /**
+         * 示例场景描述
+         */
+        private String scenario;
+
+        /**
+         * 用户输入示例
+         */
+        private String userInput;
+
+        /**
+         * 工具调用参数
+         */
+        private Map<String, Object> toolArguments;
+
+        /**
+         * 预期输出
+         */
+        private String expectedOutput;
+
+        /**
+         * 使用说明
+         */
+        private String notes;
     }
 }

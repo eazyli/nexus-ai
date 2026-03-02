@@ -6,7 +6,7 @@ import com.eazyai.ai.nexus.api.intent.IntentAnalyzer;
 import com.eazyai.ai.nexus.api.registry.PluginRegistry;
 import com.eazyai.ai.nexus.api.scheduler.PluginScheduler;
 import com.eazyai.ai.nexus.core.config.NexusProperties;
-import com.eazyai.ai.nexus.core.engine.AgentEngine;
+
 import com.eazyai.ai.nexus.core.executor.DefaultPluginExecutor;
 import com.eazyai.ai.nexus.core.integrator.DefaultResultIntegrator;
 import com.eazyai.ai.nexus.core.intent.LlmIntentAnalyzer;
@@ -25,19 +25,28 @@ import org.springframework.context.annotation.Configuration;
  * <ul>
  *   <li>NexusProperties - 配置属性</li>
  *   <li>PluginRegistry - 插件注册中心</li>
- *   <li>PluginScheduler - 插件调度器</li>
+ *   <li>PluginScheduler - 插件调度器（内部使用）</li>
  *   <li>PluginExecutor - 插件执行器</li>
- *   <li>ResultIntegrator - 结果整合器</li>
- *   <li>AgentEngine - Agent 引擎</li>
+ *   <li>ResultIntegrator - 结果整合器（内部使用）</li>
+ *   <li>ReActEngine - ReAct 执行引擎（统一入口）</li>
  * </ul>
  * 
  * <p>通过 @ComponentScan 自动扫描的组件：</p>
  * <ul>
  *   <li>AssistantFactory - Assistant 工厂</li>
- *   <li>HybridPlanner - 混合规划器（高级模式）</li>
+ *   <li>ReActEngine - ReAct 执行引擎</li>
+ *   <li>ReflectionAgent - 反思型智能体</li>
+ *   <li>InternalOrchestrator - 内部编排器</li>
  *   <li>LangChain4jAgent - 基于 AiServices 的 Agent</li>
  *   <li>LangChain4jMemoryManager - 记忆管理器</li>
  *   <li>HttpClientConfig - HTTP客户端配置</li>
+ * </ul>
+ * 
+ * <p>架构说明（v2.0）：</p>
+ * <ul>
+ *   <li>已合并双模式架构为统一的 ReAct 执行流程</li>
+ *   <li>PluginScheduler 和 ResultIntegrator 作为内部实现细节</li>
+ *   <li>通过 ThoughtEvent 回调暴露思考过程</li>
  * </ul>
  */
 @Configuration
@@ -78,9 +87,6 @@ public class AgentAutoConfiguration {
         return new LlmIntentAnalyzer();
     }
 
-    @Bean
-    @ConditionalOnMissingBean
-    public AgentEngine agentEngine() {
-        return new AgentEngine();
-    }
+    // ReActEngine 由 @ComponentScan 自动扫描注册
+    // 无需手动创建 Bean
 }

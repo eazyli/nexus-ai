@@ -308,11 +308,11 @@ public class AssistantFactory implements SmartInitializingSingleton {
         // 需要会话记忆的，创建新实例但使用持久化的 ChatMemory（带 appId 上下文）
         ChatMemoryStore.MemoryContext context = ChatMemoryStore.MemoryContext.of(appId, null);
         ChatMemory memory = persistentChatMemoryManager.getOrCreateMemory(sessionId, context);
-        
-        var builder = AiServices.builder(AgentAssistant.class)
-            .chatLanguageModel(chatModel)
-            .chatMemory(memory);
-        
+
+        AiServices<AgentAssistant> builder = AiServices.builder(AgentAssistant.class)
+                .chatLanguageModel(chatModel)
+                .chatMemory(memory);
+
         // 获取应用关联的动态工具
         Map<ToolSpecification, ToolExecutor> dynamicTools = getAppDynamicTools(appId);
         if (!dynamicTools.isEmpty()) {

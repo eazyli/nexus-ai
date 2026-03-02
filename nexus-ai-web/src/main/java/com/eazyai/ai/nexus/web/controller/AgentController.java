@@ -3,8 +3,9 @@ package com.eazyai.ai.nexus.web.controller;
 import com.eazyai.ai.nexus.api.dto.AgentRequest;
 import com.eazyai.ai.nexus.api.dto.AgentResponse;
 import com.eazyai.ai.nexus.api.plugin.PluginDescriptor;
+import com.eazyai.ai.nexus.api.react.ThoughtEvent;
 import com.eazyai.ai.nexus.api.registry.PluginRegistry;
-import com.eazyai.ai.nexus.core.engine.AgentEngine;
+import com.eazyai.ai.nexus.core.engine.ReActEngine;
 import com.eazyai.ai.nexus.web.dto.AgentExecuteRequest;
 import com.eazyai.ai.nexus.web.dto.AgentExecuteResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -16,6 +17,7 @@ import org.springframework.web.bind.annotation.*;
 
 import jakarta.validation.Valid;
 import java.util.List;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 /**
@@ -30,7 +32,7 @@ import java.util.stream.Collectors;
 public class AgentController {
 
     @Autowired
-    private AgentEngine agentEngine;
+    private ReActEngine reActEngine;
 
     @Autowired
     private PluginRegistry pluginRegistry;
@@ -54,7 +56,9 @@ public class AgentController {
                 .outputFormat(request.getOutputFormat())
                 .build();
 
-        AgentResponse response = agentEngine.execute(agentRequest);
+        // 控制台打印 ReAct 步骤
+        Consumer<ThoughtEvent> thinkingLogger = createThinkingLogger();
+        AgentResponse response = reActEngine.execute(agentRequest, thinkingLogger);
 
         return AgentExecuteResponse.builder()
                 .sessionId(response.getSessionId())
@@ -122,5 +126,52 @@ public class AgentController {
             this.capabilities = descriptor.getCapabilities();
             this.enabled = descriptor.isEnabled();
         }
+    }
+
+    /**
+     * 创建控制台打印 ReAct 步骤的回调
+     */
+    private Consumer<ThoughtEvent> createThinkingLogger() {
+        return event -> {
+            StringBuilder sb = new StringBuilder();
+            switch (event.getType()) {
+                case THINKING_START:
+                    sb.append("🚀 开始思考: ").append(event.getContent());
+                    break;
+                case THOUGHT:
+                    sb.append("💭 思考: ").append(event.getContent());
+                    break;
+                case TOOL_SELECTED:
+                    sb.append("🔧 选择工具: ").append(event.getToolName())
+                      .append(" | 输入: ").append(event.getToolInput());
+                    break;
+                case TOOL_EXECUTING:
+                    sb.append("⚙️ 执行工具: ").append(event.getToolName());
+                    break;
+                case TOOL_RESULT:
+                    sb.append(event.isSuccess() ? "✅" : "❌")
+                      .append(" 工具结果 [").append(event.getToolName()).append("]: ")
+                      .append(event.getToolOutput());
+                    if (!event.isSuccess() && event.getErrorMessage() != null) {
+                        sb.append(" | 错误: ").append(event.getErrorMessage());
+                    }
+                    break;
+                case REFLECTION_START:
+                    sb.append("🔍 开始反思...");
+                    break;
+                case REFLECTION:
+                    sb.append("💡 反思: ").append(event.getContent());
+                    break;
+                case FINAL_ANSWER:
+                    sb.append("🎯 最终答案: ").append(event.getContent());
+                    break;
+                case ERROR:
+                    sb.append("❌ 错误: ").append(event.getErrorMessage());
+                    break;
+                default:
+                    sb.append("📝 ").append(event.getType()).append(": ").append(event.getContent());
+            }
+            log.info("[ReAct] {}", sb);
+        };
     }
 }
