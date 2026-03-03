@@ -1,6 +1,6 @@
 package com.eazyai.ai.nexus.web.dto;
 
-import com.eazyai.ai.nexus.core.mcp.McpToolDescriptor;
+import com.eazyai.ai.nexus.api.tool.ToolDescriptor;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -60,7 +60,7 @@ public class ApifoxParseResponse {
         private Map<String, String> headers;
 
         @Schema(description = "参数定义")
-        private List<McpToolDescriptor.ParamDefinition> parameters;
+        private List<ToolDescriptor.ParamDefinition> parameters;
 
         @Schema(description = "响应数据提取路径")
         private String responsePath;

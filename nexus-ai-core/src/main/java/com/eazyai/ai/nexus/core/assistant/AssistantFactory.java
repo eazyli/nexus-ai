@@ -3,8 +3,8 @@ package com.eazyai.ai.nexus.core.assistant;
 import com.eazyai.ai.nexus.api.plugin.Plugin;
 import com.eazyai.ai.nexus.api.plugin.PluginDescriptor;
 import com.eazyai.ai.nexus.api.registry.PluginRegistry;
-import com.eazyai.ai.nexus.core.mcp.McpToolBus;
-import com.eazyai.ai.nexus.core.mcp.McpToolDescriptor;
+import com.eazyai.ai.nexus.api.tool.ToolBus;
+import com.eazyai.ai.nexus.api.tool.ToolDescriptor;
 import com.eazyai.ai.nexus.core.memory.ChatMemoryStore;
 import com.eazyai.ai.nexus.core.memory.PersistentChatMemoryManager;
 
@@ -51,7 +51,7 @@ public class AssistantFactory implements SmartInitializingSingleton {
     private ApplicationContext applicationContext;
 
     @Autowired
-    private McpToolBus mcpToolBus;
+    private ToolBus toolBus;
 
     @Autowired
     private PersistentChatMemoryManager persistentChatMemoryManager;
@@ -361,22 +361,22 @@ public class AssistantFactory implements SmartInitializingSingleton {
     private Map<ToolSpecification, ToolExecutor> getAppDynamicTools(String appId) {
         Map<ToolSpecification, ToolExecutor> tools = new LinkedHashMap<>();
 
-        log.info("[AssistantFactory] 查询应用 {} 的MCP工具...", appId);
+        log.info("[AssistantFactory] 查询应用 {} 的工具...", appId);
         
-        // 获取应用关联的 MCP 工具
-        List<McpToolDescriptor> mcpTools = mcpToolBus.findByAppId(appId);
-        log.info("[AssistantFactory] McpToolBus.findByAppId({}) 返回 {} 个工具", appId, mcpTools.size());
+        // 获取应用关联的工具
+        List<ToolDescriptor> toolDescriptors = toolBus.findByAppId(appId);
+        log.info("[AssistantFactory] ToolBus.findByAppId({}) 返回 {} 个工具", appId, toolDescriptors.size());
         
-        for (McpToolDescriptor descriptor : mcpTools) {
-            McpDynamicToolAdapter adapter = new McpDynamicToolAdapter(descriptor, mcpToolBus);
+        for (ToolDescriptor descriptor : toolDescriptors) {
+            DynamicToolAdapter adapter = new DynamicToolAdapter(descriptor, toolBus);
             tools.put(adapter.toToolSpecification(), adapter);
-            log.info("[AssistantFactory] 加载应用 {} 的 MCP 工具: {} ({})", 
+            log.info("[AssistantFactory] 加载应用 {} 的工具: {} ({})", 
                 appId, descriptor.getName(), descriptor.getToolId());
         }
 
         // 如果应用没有专属工具，检查是否有全局工具
         if (tools.isEmpty()) {
-            List<McpToolDescriptor> allTools = mcpToolBus.getAllTools();
+            List<ToolDescriptor> allTools = toolBus.getAllTools();
             log.info("[AssistantFactory] 所有已注册工具数量: {}", allTools.size());
             allTools.forEach(t -> log.info("[AssistantFactory] 已注册工具: {} - appId={}, enabled={}", 
                 t.getName(), t.getAppId(), t.getEnabled()));

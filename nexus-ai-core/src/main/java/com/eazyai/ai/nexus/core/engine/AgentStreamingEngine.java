@@ -5,7 +5,7 @@ import com.eazyai.ai.nexus.api.dto.StreamEvent;
 import com.eazyai.ai.nexus.api.dto.ToolExecutionContext;
 import com.eazyai.ai.nexus.core.assistant.StreamingAgentAssistant;
 import com.eazyai.ai.nexus.core.assistant.AssistantFactory;
-import com.eazyai.ai.nexus.core.assistant.McpDynamicToolAdapter;
+import com.eazyai.ai.nexus.core.assistant.DynamicToolAdapter;
 import com.eazyai.ai.nexus.core.event.StreamingEventBus;
 import dev.langchain4j.service.TokenStream;
 import lombok.extern.slf4j.Slf4j;
@@ -76,7 +76,7 @@ public class AgentStreamingEngine {
         ToolExecutionContext.init();
         
         // 设置当前请求ID（用于工具事件发布）
-        McpDynamicToolAdapter.setCurrentRequestId(requestId);
+        DynamicToolAdapter.setCurrentRequestId(requestId);
         
         // 订阅事件总线
         eventBus.subscribe(requestId, eventConsumer);
@@ -124,7 +124,7 @@ public class AgentStreamingEngine {
                     
                     // 清理
                     ToolExecutionContext.clear();
-                    McpDynamicToolAdapter.clearCurrentRequestId();
+                    DynamicToolAdapter.clearCurrentRequestId();
                     eventBus.unsubscribe(requestId);
                     completionLatch.countDown();
                 })
@@ -134,7 +134,7 @@ public class AgentStreamingEngine {
                     
                     // 清理
                     ToolExecutionContext.clear();
-                    McpDynamicToolAdapter.clearCurrentRequestId();
+                    DynamicToolAdapter.clearCurrentRequestId();
                     eventBus.unsubscribe(requestId);
                     errorRef.set(error);
                     completionLatch.countDown();
@@ -146,9 +146,9 @@ public class AgentStreamingEngine {
             boolean completed = completionLatch.await(timeout, TimeUnit.MILLISECONDS);
             
             if (!completed) {
-                log.warn("[AgentStreamingEngine] 流式执行超时: requestId={}, timeout={}ms", requestId, timeout);
+                    log.warn("[AgentStreamingEngine] 流式执行超时: requestId={}, timeout={}ms", requestId, timeout);
                 eventConsumer.accept(StreamEvent.error("执行超时"));
-                McpDynamicToolAdapter.clearCurrentRequestId();
+                DynamicToolAdapter.clearCurrentRequestId();
                 eventBus.unsubscribe(requestId);
             }
             
@@ -162,13 +162,13 @@ public class AgentStreamingEngine {
             log.error("[AgentStreamingEngine] 流式执行被中断: requestId={}", requestId, e);
             eventConsumer.accept(StreamEvent.error("执行被中断"));
             ToolExecutionContext.clear();
-            McpDynamicToolAdapter.clearCurrentRequestId();
+            DynamicToolAdapter.clearCurrentRequestId();
             eventBus.unsubscribe(requestId);
         } catch (Exception e) {
             log.error("[AgentStreamingEngine] 流式执行异常: requestId={}", requestId, e);
             eventConsumer.accept(StreamEvent.error(e.getMessage()));
             ToolExecutionContext.clear();
-            McpDynamicToolAdapter.clearCurrentRequestId();
+            DynamicToolAdapter.clearCurrentRequestId();
             eventBus.unsubscribe(requestId);
         }
     }

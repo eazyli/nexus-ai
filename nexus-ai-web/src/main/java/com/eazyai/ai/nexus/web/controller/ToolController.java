@@ -1,9 +1,9 @@
 package com.eazyai.ai.nexus.web.controller;
 
-import com.eazyai.ai.nexus.infra.converter.McpToolConverter;
-import com.eazyai.ai.nexus.core.mcp.McpToolBus;
-import com.eazyai.ai.nexus.core.mcp.McpToolDescriptor;
-import com.eazyai.ai.nexus.core.mcp.McpToolResult;
+import com.eazyai.ai.nexus.infra.converter.ToolConverter;
+import com.eazyai.ai.nexus.api.tool.ToolBus;
+import com.eazyai.ai.nexus.api.tool.ToolDescriptor;
+import com.eazyai.ai.nexus.api.tool.ToolResult;
 import com.eazyai.ai.nexus.infra.dal.entity.AiMcpTool;
 import com.eazyai.ai.nexus.infra.dal.repository.AiMcpToolRepository;
 import com.eazyai.ai.nexus.web.dto.DbToolRegisterRequest;
@@ -31,16 +31,16 @@ import java.util.stream.Collectors;
 @Tag(name = "工具管理接口", description = "动态工具的注册、查询、执行等操作")
 public class ToolController {
 
-    private final McpToolBus mcpToolBus;
+    private final ToolBus toolBus;
     private final AiMcpToolRepository aiMcpToolRepository;
-    private final McpToolConverter mcpToolConverter;
+    private final ToolConverter toolConverter;
 
     /**
      * 注册HTTP工具
      */
     @PostMapping("/http")
     @Operation(summary = "注册HTTP工具", description = "动态注册一个HTTP类型的工具，用于调用外部REST API")
-    public ResponseEntity<McpToolDescriptor> registerHttpTool(@Valid @RequestBody HttpToolRegisterRequest request) {
+    public ResponseEntity<ToolDescriptor> registerHttpTool(@Valid @RequestBody HttpToolRegisterRequest request) {
         log.info("注册HTTP工具: {}", request.getName());
         
         String toolId = request.getToolId() != null ? request.getToolId() : UUID.randomUUID().toString();
@@ -62,8 +62,8 @@ public class ToolController {
         aiMcpToolRepository.insert(entity);
         
         // 注册到内存
-        McpToolDescriptor descriptor = mcpToolConverter.toDescriptor(entity);
-        mcpToolBus.registerTool(descriptor);
+        ToolDescriptor descriptor = toolConverter.toDescriptor(entity);
+        toolBus.registerTool(descriptor);
         
         return ResponseEntity.ok(descriptor);
     }
@@ -73,7 +73,7 @@ public class ToolController {
      */
     @PostMapping("/db")
     @Operation(summary = "注册数据库工具", description = "动态注册一个数据库类型的工具，用于执行SQL查询")
-    public ResponseEntity<McpToolDescriptor> registerDbTool(@Valid @RequestBody DbToolRegisterRequest request) {
+    public ResponseEntity<ToolDescriptor> registerDbTool(@Valid @RequestBody DbToolRegisterRequest request) {
         log.info("注册数据库工具: {}", request.getName());
         
         String toolId = request.getToolId() != null ? request.getToolId() : UUID.randomUUID().toString();
@@ -95,8 +95,8 @@ public class ToolController {
         aiMcpToolRepository.insert(entity);
         
         // 注册到内存
-        McpToolDescriptor descriptor = mcpToolConverter.toDescriptor(entity);
-        mcpToolBus.registerTool(descriptor);
+        ToolDescriptor descriptor = toolConverter.toDescriptor(entity);
+        toolBus.registerTool(descriptor);
         
         return ResponseEntity.ok(descriptor);
     }
@@ -106,8 +106,8 @@ public class ToolController {
      */
     @PostMapping
     @Operation(summary = "注册工具", description = "动态注册一个通用工具")
-    public ResponseEntity<McpToolDescriptor> registerTool(@Valid @RequestBody McpToolDescriptor descriptor) {
-        log.info("注册工具: {} (类型: {})", descriptor.getName(), descriptor.getType());
+    public ResponseEntity<ToolDescriptor> registerTool(@Valid @RequestBody ToolDescriptor descriptor) {
+        log.info("注册工具: {} (类型: {})", descriptor.getName(), descriptor.getExecutorType());
         
         if (descriptor.getToolId() == null) {
             descriptor.setToolId(UUID.randomUUID().toString());
@@ -117,13 +117,13 @@ public class ToolController {
         }
         
         // 保存到数据库
-        AiMcpTool entity = mcpToolConverter.toEntity(descriptor);
+        AiMcpTool entity = toolConverter.toEntity(descriptor);
         entity.setCreateTime(LocalDateTime.now());
         entity.setUpdateTime(LocalDateTime.now());
         aiMcpToolRepository.insert(entity);
         
         // 注册到内存
-        mcpToolBus.registerTool(descriptor);
+        toolBus.registerTool(descriptor);
         return ResponseEntity.ok(descriptor);
     }
 
@@ -132,9 +132,9 @@ public class ToolController {
      */
     @GetMapping("/{toolId}")
     @Operation(summary = "获取工具详情", description = "根据工具ID获取工具详细信息")
-    public ResponseEntity<McpToolDescriptor> getTool(@PathVariable("toolId") String toolId) {
+    public ResponseEntity<ToolDescriptor> getTool(@PathVariable("toolId") String toolId) {
         return aiMcpToolRepository.findById(toolId)
-                .map(mcpToolConverter::toDescriptor)
+                .map(toolConverter::toDescriptor)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
@@ -144,8 +144,8 @@ public class ToolController {
      */
     @GetMapping
     @Operation(summary = "获取工具列表", description = "获取所有已注册的工具列表")
-    public ResponseEntity<List<McpToolDescriptor>> listTools() {
-        List<McpToolDescriptor> tools = mcpToolConverter.toDescriptorList(aiMcpToolRepository.findAllEnabled());
+    public ResponseEntity<List<ToolDescriptor>> listTools() {
+        List<ToolDescriptor> tools = toolConverter.toDescriptorList(aiMcpToolRepository.findAllEnabled());
         return ResponseEntity.ok(tools);
     }
 
@@ -154,10 +154,10 @@ public class ToolController {
      */
     @GetMapping("/type/{type}")
     @Operation(summary = "根据类型查找工具", description = "查找指定类型的工具")
-    public ResponseEntity<List<McpToolDescriptor>> findByType(@PathVariable("type") String type) {
-        List<McpToolDescriptor> tools = aiMcpToolRepository.findByToolType(type.toUpperCase()).stream()
+    public ResponseEntity<List<ToolDescriptor>> findByType(@PathVariable("type") String type) {
+        List<ToolDescriptor> tools = aiMcpToolRepository.findByToolType(type.toUpperCase()).stream()
                 .filter(t -> t.getStatus() != null && t.getStatus() == 1)
-                .map(mcpToolConverter::toDescriptor)
+                .map(toolConverter::toDescriptor)
                 .collect(Collectors.toList());
         return ResponseEntity.ok(tools);
     }
@@ -167,10 +167,10 @@ public class ToolController {
      */
     @GetMapping("/app/{appId}")
     @Operation(summary = "根据应用ID查找工具", description = "查找指定应用下的所有工具")
-    public ResponseEntity<List<McpToolDescriptor>> findByAppId(@PathVariable("appId") String appId) {
-        List<McpToolDescriptor> tools = aiMcpToolRepository.findByAppId(appId).stream()
+    public ResponseEntity<List<ToolDescriptor>> findByAppId(@PathVariable("appId") String appId) {
+        List<ToolDescriptor> tools = aiMcpToolRepository.findByAppId(appId).stream()
                 .filter(t -> t.getStatus() != null && t.getStatus() == 1)
-                .map(mcpToolConverter::toDescriptor)
+                .map(toolConverter::toDescriptor)
                 .collect(Collectors.toList());
         return ResponseEntity.ok(tools);
     }
@@ -186,7 +186,7 @@ public class ToolController {
         // 从数据库删除
         aiMcpToolRepository.deleteById(toolId);
         // 从内存注销
-        mcpToolBus.unregisterTool(toolId);
+        toolBus.unregisterTool(toolId);
         
         return ResponseEntity.noContent().build();
     }
@@ -196,11 +196,11 @@ public class ToolController {
      */
     @PostMapping("/{toolId}/invoke")
     @Operation(summary = "执行工具", description = "执行指定工具并返回结果")
-    public ResponseEntity<McpToolResult> invokeTool(
+    public ResponseEntity<ToolResult> invokeTool(
             @PathVariable("toolId") String toolId,
             @RequestBody Map<String, Object> params) {
         log.info("执行工具: {} - params: {}", toolId, params);
-        McpToolResult result = mcpToolBus.invoke(toolId, params, null);
+        ToolResult result = toolBus.invoke(toolId, params, null);
         return ResponseEntity.ok(result);
     }
 
