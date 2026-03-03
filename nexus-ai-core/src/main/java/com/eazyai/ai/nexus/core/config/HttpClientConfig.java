@@ -15,7 +15,7 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * HTTP客户端配置
- * 为HttpToolExecutor提供连接池和超时配置
+ * 为工具执行器提供连接池和超时配置
  */
 @Slf4j
 @Configuration

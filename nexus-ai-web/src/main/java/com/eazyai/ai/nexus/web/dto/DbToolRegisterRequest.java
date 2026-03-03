@@ -1,6 +1,6 @@
 package com.eazyai.ai.nexus.web.dto;
 
-import com.eazyai.ai.nexus.core.mcp.McpToolDescriptor;
+import com.eazyai.ai.nexus.api.tool.ToolDescriptor;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
@@ -33,7 +33,7 @@ public class DbToolRegisterRequest {
     private List<String> capabilities;
 
     @Schema(description = "参数定义")
-    private List<McpToolDescriptor.ParamDefinition> parameters;
+    private List<ToolDescriptor.ParamDefinition> parameters;
 
     @NotBlank(message = "数据源ID不能为空")
     @Schema(description = "数据源ID", required = true, example = "mysql-datasource-001")

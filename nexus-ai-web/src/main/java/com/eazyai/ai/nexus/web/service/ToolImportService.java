@@ -1,8 +1,8 @@
 package com.eazyai.ai.nexus.web.service;
 
-import com.eazyai.ai.nexus.core.mcp.McpToolBus;
-import com.eazyai.ai.nexus.core.mcp.McpToolDescriptor;
-import com.eazyai.ai.nexus.infra.converter.McpToolConverter;
+import com.eazyai.ai.nexus.api.tool.ToolBus;
+import com.eazyai.ai.nexus.api.tool.ToolDescriptor;
+import com.eazyai.ai.nexus.infra.converter.ToolConverter;
 import com.eazyai.ai.nexus.infra.dal.entity.AiMcpTool;
 import com.eazyai.ai.nexus.infra.dal.repository.AiMcpToolRepository;
 import com.eazyai.ai.nexus.web.dto.BatchToolImportRequest;
@@ -24,8 +24,8 @@ import java.util.*;
 public class ToolImportService {
 
     private final AiMcpToolRepository aiMcpToolRepository;
-    private final McpToolBus mcpToolBus;
-    private final McpToolConverter mcpToolConverter;
+    private final ToolBus toolBus;
+    private final ToolConverter toolConverter;
 
     /**
      * 批量导入工具
@@ -94,7 +94,7 @@ public class ToolImportService {
         if (existing.isPresent() && overwrite) {
             // 删除旧工具
             aiMcpToolRepository.deleteById(existing.get().getToolId());
-            mcpToolBus.unregisterTool(existing.get().getToolId());
+            toolBus.unregisterTool(existing.get().getToolId());
         }
 
         // 构建配置
@@ -124,8 +124,8 @@ public class ToolImportService {
         aiMcpToolRepository.insert(entity);
 
         // 注册到内存
-        McpToolDescriptor descriptor = mcpToolConverter.toDescriptor(entity);
-        mcpToolBus.registerTool(descriptor);
+        ToolDescriptor descriptor = toolConverter.toDescriptor(entity);
+        toolBus.registerTool(descriptor);
 
         return toolId;
     }

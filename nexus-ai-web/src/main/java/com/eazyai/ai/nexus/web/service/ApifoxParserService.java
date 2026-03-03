@@ -1,6 +1,6 @@
 package com.eazyai.ai.nexus.web.service;
 
-import com.eazyai.ai.nexus.core.mcp.McpToolDescriptor;
+import com.eazyai.ai.nexus.api.tool.ToolDescriptor;
 import com.eazyai.ai.nexus.web.dto.ApifoxParseRequest;
 import com.eazyai.ai.nexus.web.dto.ApifoxParseResponse;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -112,7 +112,7 @@ public class ApifoxParserService {
                         String.format("%s %s", method, path));
 
         // 解析参数
-        List<McpToolDescriptor.ParamDefinition> parameters = parseParameters(operation);
+        List<ToolDescriptor.ParamDefinition> parameters = parseParameters(operation);
 
         // 解析标签
         List<String> tags = parseTags(operation);
@@ -147,8 +147,8 @@ public class ApifoxParserService {
     /**
      * 解析参数定义
      */
-    private List<McpToolDescriptor.ParamDefinition> parseParameters(JsonNode operation) {
-        List<McpToolDescriptor.ParamDefinition> parameters = new ArrayList<>();
+    private List<ToolDescriptor.ParamDefinition> parseParameters(JsonNode operation) {
+        List<ToolDescriptor.ParamDefinition> parameters = new ArrayList<>();
         JsonNode paramsNode = operation.path("parameters");
         JsonNode requestBody = operation.path("requestBody");
 
@@ -161,7 +161,7 @@ public class ApifoxParserService {
                 boolean required = param.path("required").asBoolean(false);
                 String type = getParamType(param.path("schema"));
 
-                parameters.add(McpToolDescriptor.ParamDefinition.builder()
+                parameters.add(ToolDescriptor.ParamDefinition.builder()
                         .name(name)
                         .type(type)
                         .description(StringUtils.hasText(desc) ? desc :
@@ -187,7 +187,7 @@ public class ApifoxParserService {
      * 解析Schema属性
      */
     private void parseSchemaProperties(JsonNode schema,
-                                       List<McpToolDescriptor.ParamDefinition> parameters) {
+                                       List<ToolDescriptor.ParamDefinition> parameters) {
         JsonNode properties = schema.path("properties");
         if (properties.isMissingNode()) {
             return;
@@ -209,7 +209,7 @@ public class ApifoxParserService {
             String type = getParamType(fieldSchema);
             String desc = getText(fieldSchema, "description");
 
-            parameters.add(McpToolDescriptor.ParamDefinition.builder()
+            parameters.add(ToolDescriptor.ParamDefinition.builder()
                     .name(name)
                     .type(type)
                     .description(StringUtils.hasText(desc) ? desc :

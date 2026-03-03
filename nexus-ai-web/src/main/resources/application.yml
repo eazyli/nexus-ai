@@ -48,8 +48,8 @@ mybatis-plus:
 langchain4j:
   open-ai:
     chat-model:
-      api-key: ${LANGCHAIN4J_API_KEY:your-api-key-here}
-      base-url: ${LANGCHAIN4J_BASE_URL:https://api.openai.com}
+      api-key: sk-a281867ccc764d4594fecb77db9fc2fb
+      base-url: https://api.deepseek.com
       model-name: deepseek-chat
       temperature: 0.7
       max-tokens: 2000
