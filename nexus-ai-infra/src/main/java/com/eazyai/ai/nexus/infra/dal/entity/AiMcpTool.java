@@ -39,6 +39,11 @@ public class AiMcpTool {
     private String appId;
 
     /**
+     * 可见性: PRIVATE/PUBLIC/SHARED
+     */
+    private String visibility;
+
+    /**
      * 状态: 1启用/0禁用
      */
     private Integer status;

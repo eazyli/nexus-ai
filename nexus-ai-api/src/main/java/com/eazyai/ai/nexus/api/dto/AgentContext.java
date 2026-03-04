@@ -4,7 +4,9 @@ import lombok.Builder;
 import lombok.Data;
 
 import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -23,6 +25,11 @@ public class AgentContext implements Serializable {
      */
     @Builder.Default
     private String requestId = UUID.randomUUID().toString();
+
+    /**
+     * 应用ID
+     */
+    private String appId;
 
     /**
      * 会话ID（用于多轮对话）
@@ -68,6 +75,12 @@ public class AgentContext implements Serializable {
      */
     @Builder.Default
     private Map<String, Object> attributes = new HashMap<>();
+
+    /**
+     * 会话历史消息
+     */
+    @Builder.Default
+    private List<String> sessionHistory = new ArrayList<>();
 
     /**
      * 开始时间

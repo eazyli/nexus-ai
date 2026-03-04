@@ -31,6 +31,11 @@ public class AgentRequest implements Serializable {
     private String appId;
 
     /**
+     * 用户ID
+     */
+    private String userId;
+
+    /**
      * 任务类型（可选，用于路由）
      */
     private String taskType;

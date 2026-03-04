@@ -1,13 +1,15 @@
 package com.eazyai.ai.nexus.core.intent;
 
+import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONArray;
+import com.alibaba.fastjson.JSONObject;
 import com.eazyai.ai.nexus.api.dto.AgentContext;
 import com.eazyai.ai.nexus.api.dto.AgentRequest;
 import com.eazyai.ai.nexus.api.intent.IntentAnalyzer;
 import com.eazyai.ai.nexus.api.intent.IntentResult;
-import com.eazyai.ai.nexus.api.tool.ToolBus;
 import com.eazyai.ai.nexus.api.tool.ToolDescriptor;
-import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.TypeReference;
+import com.eazyai.ai.nexus.core.tool.DefaultToolBus;
+import com.eazyai.ai.nexus.core.tool.ToolUsageHistoryService;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
@@ -22,12 +24,13 @@ import java.util.stream.Collectors;
 
 /**
  * LLM意图分析器
- *
- * <p>优化点：</p>
+ * 
+ * <p>核心功能：</p>
  * <ul>
- *   <li>结合可用工具能力进行分析</li>
- *   <li>提取更精确的实体信息</li>
- *   <li>输出结构化JSON便于后续路由</li>
+ *   <li>深度理解用户意图</li>
+ *   <li>提取关键实体信息</li>
+ *   <li>基于工具能力描述和历史使用数据，智能推荐工具</li>
+ *   <li>输出结构化JSON，包含推荐工具及其参数建议</li>
  * </ul>
  */
 @Slf4j
@@ -38,35 +41,64 @@ public class LlmIntentAnalyzer implements IntentAnalyzer {
     private ChatLanguageModel chatModel;
 
     @Autowired
-    private ToolBus toolBus;
+    private DefaultToolBus toolBus;
 
-    private static final String INTENT_PROMPT = """
-            分析用户输入，提取关键信息。
+    @Autowired
+    private ToolUsageHistoryService historyService;
+
+    private static final String INTENT_ANALYSIS_PROMPT = """
+            你是一个专业的意图分析专家。请分析用户输入，理解用户意图，并从可用工具中选择最合适的工具。
 
             ## 用户输入
             %s
 
-            ## 可用工具能力
+            ## 应用上下文
+            应用ID: %s
+            用户ID: %s
+            会话历史: %s
+
+            ## 可用工具列表
             %s
 
+            ## 工具使用历史统计
+            %s
+
+            ## 分析要求
+            1. 深度理解用户真实意图，不要只看表面关键词
+            2. 从可用工具中选择最匹配的1-3个工具
+            3. 对于每个推荐工具，说明推荐理由，并给出建议参数
+            4. 优先推荐历史成功率高的工具
+            5. 如果用户意图不明确，提出澄清问题
+            6. 提取用户输入中的关键实体（时间、地点、人物、数量等）
+
             ## 输出格式（JSON）
+            ```json
             {
-              "intent_type": "意图类型",
+              "intent_type": "意图类型（如：query/search/action/chat）",
+              "intent_description": "意图详细描述",
               "confidence": 0.95,
               "entities": {
-                "提取的关键实体": "对应值"
+                "实体名": "实体值"
               },
-              "suggested_plugins": ["可能用到的插件ID"],
-              "reasoning": "简要分析原因",
               "sentiment": "POSITIVE/NEGATIVE/NEUTRAL",
-              "is_complex": false
+              "is_ambiguous": false,
+              "clarification_question": "如果不明确，需要澄清的问题",
+              "reasoning": "分析推理过程",
+              "recommended_tools": [
+                {
+                  "tool_id": "工具ID",
+                  "tool_name": "工具名称",
+                  "reason": "推荐理由",
+                  "score": 0.95,
+                  "suggested_params": {
+                    "参数名": "建议值"
+                  }
+                }
+              ]
             }
+            ```
 
-            要求：
-            1. entities提取用户输入中的关键信息（如时间、地点、数量等）
-            2. suggested_plugins根据用户需求推测可能需要的插件
-            3. is_complex判断是否需要多步骤处理
-            4. 只返回JSON，不要其他文字
+            只返回JSON，不要其他文字。
             """;
 
     @Override
@@ -77,15 +109,36 @@ public class LlmIntentAnalyzer implements IntentAnalyzer {
         }
 
         try {
-            // 获取可用工具描述
-            String capabilities = getToolCapabilities();
+            // 获取应用可访问的工具
+            String appId = context != null ? context.getAppId() : null;
+            List<ToolDescriptor> accessibleTools = toolBus.findAccessibleTools(appId);
+
+            if (accessibleTools.isEmpty()) {
+                log.warn("应用[{}]无可访问工具", appId);
+                return createDefaultResult(request);
+            }
+
+            // 构建工具描述
+            String toolDescriptions = buildToolDescriptions(accessibleTools);
+
+            // 获取工具使用历史
+            String historyStats = historyService.formatToolStatsForLLM(appId);
+
+            // 构建会话历史摘要
+            String sessionSummary = buildSessionSummary(context);
 
             // 构建提示词
-            String prompt = String.format(INTENT_PROMPT, request.getQuery(), capabilities);
+            String prompt = String.format(INTENT_ANALYSIS_PROMPT,
+                    request.getQuery(),
+                    appId != null ? appId : "无",
+                    request.getUserId() != null ? request.getUserId() : "匿名",
+                    sessionSummary,
+                    toolDescriptions,
+                    historyStats);
 
             // 调用LLM
             Response<AiMessage> response = chatModel.generate(
-                    new SystemMessage("你是意图分析专家，擅长理解用户需求并提取关键信息。"),
+                    new SystemMessage("你是意图分析专家，擅长深度理解用户需求并智能推荐最合适的工具。"),
                     new UserMessage(prompt)
             );
 
@@ -93,7 +146,7 @@ public class LlmIntentAnalyzer implements IntentAnalyzer {
             log.debug("LLM意图分析响应: {}", content);
 
             // 解析结果
-            return parseResult(content, request);
+            return parseResult(content, request, accessibleTools);
 
         } catch (Exception e) {
             log.error("意图分析失败", e);
@@ -102,37 +155,112 @@ public class LlmIntentAnalyzer implements IntentAnalyzer {
     }
 
     /**
-     * 获取工具能力描述
+     * 构建工具描述
      */
-    private String getToolCapabilities() {
-        List<ToolDescriptor> tools = toolBus.getAllTools();
-        if (tools.isEmpty()) {
-            return "无可用工具";
+    private String buildToolDescriptions(List<ToolDescriptor> tools) {
+        StringBuilder sb = new StringBuilder();
+        
+        // 获取历史成功率
+        Map<String, Double> successRates = historyService.getAllSuccessRates();
+
+        for (int i = 0; i < tools.size(); i++) {
+            ToolDescriptor tool = tools.get(i);
+            sb.append(String.format("%d. 工具ID: %s\n", i + 1, tool.getToolId()));
+            sb.append(String.format("   名称: %s\n", tool.getName()));
+            sb.append(String.format("   描述: %s\n", tool.getDescription()));
+            sb.append(String.format("   能力标签: %s\n", 
+                    tool.getCapabilities() != null ? String.join(", ", tool.getCapabilities()) : "无"));
+            
+            // 历史成功率
+            Double rate = successRates.get(tool.getToolId());
+            if (rate != null) {
+                sb.append(String.format("   历史成功率: %.1f%%\n", rate * 100));
+            }
+            
+            // 参数说明
+            if (tool.getParameters() != null && !tool.getParameters().isEmpty()) {
+                sb.append("   参数:\n");
+                for (ToolDescriptor.ParamDefinition param : tool.getParameters()) {
+                    sb.append(String.format("     - %s (%s): %s%s\n",
+                            param.getName(),
+                            param.getType(),
+                            param.getDescription(),
+                            Boolean.TRUE.equals(param.getRequired()) ? " [必填]" : ""));
+                }
+            }
+            sb.append("\n");
         }
 
-        return tools.stream()
-                .filter(ToolDescriptor::getEnabled)
-                .map(t -> String.format("%s: %s", t.getToolId(), t.getDescription()))
+        return sb.toString();
+    }
+
+    /**
+     * 构建会话历史摘要
+     */
+    private String buildSessionSummary(AgentContext context) {
+        if (context == null || context.getSessionHistory() == null || context.getSessionHistory().isEmpty()) {
+            return "无历史对话";
+        }
+        
+        // 只取最近3轮对话
+        int size = Math.min(3, context.getSessionHistory().size());
+        List<String> recentMessages = context.getSessionHistory().subList(
+                Math.max(0, context.getSessionHistory().size() - size),
+                context.getSessionHistory().size());
+
+        return recentMessages.stream()
+                .map(msg -> {
+                    if (msg.length() > 100) {
+                        return msg.substring(0, 100) + "...";
+                    }
+                    return msg;
+                })
                 .collect(Collectors.joining("\n"));
     }
 
     /**
      * 解析LLM返回的JSON
      */
-    private IntentResult parseResult(String content, AgentRequest request) {
+    private IntentResult parseResult(String content, AgentRequest request, List<ToolDescriptor> tools) {
         try {
             // 提取JSON部分
             String json = extractJson(content);
-            Map<String, Object> result = JSON.parseObject(json, new TypeReference<>() {});
+            JSONObject result = JSON.parseObject(json);
+
+            // 解析推荐工具
+            List<IntentResult.ToolRecommendation> recommendations = new ArrayList<>();
+            JSONArray toolsArray = result.getJSONArray("recommended_tools");
+            Map<String, Double> successRates = historyService.getAllSuccessRates();
+
+            if (toolsArray != null) {
+                for (int i = 0; i < toolsArray.size(); i++) {
+                    JSONObject toolJson = toolsArray.getJSONObject(i);
+                    String toolId = toolJson.getString("tool_id");
+
+                    IntentResult.ToolRecommendation rec = IntentResult.ToolRecommendation.builder()
+                            .toolId(toolId)
+                            .toolName(toolJson.getString("tool_name"))
+                            .reason(toolJson.getString("reason"))
+                            .score(toolJson.getDoubleValue("score"))
+                            .historicalSuccessRate(successRates.get(toolId))
+                            .suggestedParams(toolJson.getJSONObject("suggested_params") != null ?
+                                    toolJson.getJSONObject("suggested_params").getInnerMap() : new HashMap<>())
+                            .build();
+
+                    recommendations.add(rec);
+                }
+            }
 
             return IntentResult.builder()
-                    .intentType((String) result.getOrDefault("intent_type", "general"))
-                    .confidence(parseConfidence(result.get("confidence")))
-                    .entities((Map<String, Object>) result.getOrDefault("entities", new HashMap<>()))
-                    .sentiment(parseSentiment((String) result.get("sentiment")))
-                    .suggestedTaskType(String.join(",", 
-                            (List<String>) result.getOrDefault("suggested_plugins", Collections.emptyList())))
-                    .isAmbiguous((Boolean) result.getOrDefault("is_complex", false))
+                    .intentType(result.getString("intent_type"))
+                    .confidence(result.getDoubleValue("confidence"))
+                    .entities(result.getJSONObject("entities") != null ?
+                            result.getJSONObject("entities").getInnerMap() : new HashMap<>())
+                    .sentiment(parseSentiment(result.getString("sentiment")))
+                    .isAmbiguous(result.getBooleanValue("is_ambiguous"))
+                    .clarificationQuestion(result.getString("clarification_question"))
+                    .reasoning(result.getString("reasoning"))
+                    .recommendedTools(recommendations)
                     .rawResult(result)
                     .build();
 
@@ -152,19 +280,6 @@ public class LlmIntentAnalyzer implements IntentAnalyzer {
             return content.substring(start, end + 1);
         }
         return content;
-    }
-
-    /**
-     * 解析置信度
-     */
-    private double parseConfidence(Object value) {
-        if (value == null) return 0.8;
-        if (value instanceof Number) return ((Number) value).doubleValue();
-        try {
-            return Double.parseDouble(value.toString());
-        } catch (NumberFormatException e) {
-            return 0.8;
-        }
     }
 
     /**
@@ -189,6 +304,7 @@ public class LlmIntentAnalyzer implements IntentAnalyzer {
                 .sentiment(IntentResult.Sentiment.NEUTRAL)
                 .suggestedTaskType("chat")
                 .isAmbiguous(false)
+                .reasoning("LLM不可用或无可用工具，返回默认意图")
                 .build();
     }
 

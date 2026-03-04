@@ -1,10 +1,13 @@
 package com.eazyai.ai.nexus.infra.converter;
 
 import com.eazyai.ai.nexus.api.tool.ToolDescriptor;
+import com.eazyai.ai.nexus.api.tool.ToolVisibility;
 import com.eazyai.ai.nexus.infra.dal.entity.AiMcpTool;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -29,9 +32,17 @@ public class ToolConverter {
             return null;
         }
 
+        // 解析可见性
+        ToolVisibility visibility = parseVisibility(entity.getVisibility());
+        
+        // 解析授权应用列表
+        List<String> authorizedApps = parseAuthorizedApps(entity.getPermissionApps());
+        
         ToolDescriptor descriptor = ToolDescriptor.builder()
                 .toolId(entity.getToolId())
                 .appId(entity.getAppId())
+                .visibility(visibility)
+                .authorizedApps(authorizedApps)
                 .name(entity.getToolName())
                 .description(entity.getDescription())
                 .executorType(entity.getToolType() != null ? entity.getToolType().toLowerCase() : "http")
@@ -96,6 +107,9 @@ public class ToolConverter {
         AiMcpTool entity = new AiMcpTool();
         entity.setToolId(descriptor.getToolId());
         entity.setAppId(descriptor.getAppId());
+        entity.setVisibility(descriptor.getVisibility() != null ? descriptor.getVisibility().name() : null);
+        entity.setPermissionApps(descriptor.getAuthorizedApps() != null ? 
+                String.join(",", descriptor.getAuthorizedApps()) : null);
         entity.setToolName(descriptor.getName());
         entity.setDescription(descriptor.getDescription());
         entity.setToolType(descriptor.getExecutorType() != null ? descriptor.getExecutorType().toUpperCase() : "HTTP");
@@ -131,6 +145,33 @@ public class ToolConverter {
         }
         return entities.stream()
                 .map(this::toDescriptor)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 解析可见性
+     */
+    private ToolVisibility parseVisibility(String visibility) {
+        if (visibility == null || visibility.isBlank()) {
+            return null;
+        }
+        try {
+            return ToolVisibility.valueOf(visibility.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    /**
+     * 解析授权应用列表
+     */
+    private List<String> parseAuthorizedApps(String permissionApps) {
+        if (permissionApps == null || permissionApps.isBlank()) {
+            return Collections.emptyList();
+        }
+        return Arrays.stream(permissionApps.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
                 .collect(Collectors.toList());
     }
 }

@@ -106,6 +106,24 @@ public interface ToolBus {
     List<ToolDescriptor> findByAppId(String appId);
 
     /**
+     * 查找应用可访问的所有工具
+     * 根据工具可见性规则返回：
+     * - PUBLIC: 所有应用可访问
+     * - PRIVATE: 仅所属应用可访问
+     * - SHARED: 仅授权应用列表中的应用可访问
+     *
+     * @param appId 应用ID（可为null，仅返回PUBLIC工具）
+     * @return 可访问的工具列表
+     */
+    default List<ToolDescriptor> findAccessibleTools(String appId) {
+        // 默认实现：如果appId为空返回所有工具，否则返回appId匹配的工具
+        if (appId == null) {
+            return getAllTools();
+        }
+        return findByAppId(appId);
+    }
+
+    /**
      * 按执行器类型查找工具
      *
      * @param executorType 执行器类型

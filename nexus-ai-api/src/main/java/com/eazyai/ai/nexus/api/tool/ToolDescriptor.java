@@ -48,6 +48,19 @@ public class ToolDescriptor implements Serializable {
     private String appId;
 
     /**
+     * 工具可见性
+     * PRIVATE: 应用专属，仅所属应用可访问
+     * PUBLIC: 全局公共，所有应用均可访问
+     * SHARED: 指定共享，仅授权应用可访问
+     */
+    private ToolVisibility visibility;
+
+    /**
+     * 授权应用列表（当visibility为SHARED时生效）
+     */
+    private List<String> authorizedApps;
+
+    /**
      * 工具名称（用于LLM识别）
      */
     private String name;

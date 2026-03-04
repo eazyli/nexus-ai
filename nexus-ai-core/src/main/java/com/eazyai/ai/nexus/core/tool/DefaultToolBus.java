@@ -5,6 +5,7 @@ import com.eazyai.ai.nexus.api.tool.ToolBus;
 import com.eazyai.ai.nexus.api.tool.ToolDescriptor;
 import com.eazyai.ai.nexus.api.tool.ToolExecutor;
 import com.eazyai.ai.nexus.api.tool.ToolResult;
+import com.eazyai.ai.nexus.api.tool.ToolVisibility;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -52,6 +53,12 @@ public class DefaultToolBus implements ToolBus {
      * 执行器注册表：executorType -> ToolExecutor
      */
     private final Map<String, ToolExecutor> executorRegistry = new ConcurrentHashMap<>();
+
+    /**
+     * 工具使用历史服务
+     */
+    @Autowired(required = false)
+    private ToolUsageHistoryService historyService;
 
     /**
      * 通过Spring自动注入所有ToolExecutor实现
@@ -110,12 +117,57 @@ public class DefaultToolBus implements ToolBus {
                 .toList();
     }
 
+    /**
+     * 按应用ID查找工具（已废弃，请使用findAccessibleTools）
+     * 此方法仅返回appId精确匹配的工具
+     */
     @Override
     public List<ToolDescriptor> findByAppId(String appId) {
         return toolRegistry.values().stream()
                 .filter(t -> appId != null && appId.equals(t.getAppId()))
                 .filter(ToolDescriptor::isEnabled)
                 .toList();
+    }
+
+    /**
+     * 查找应用可访问的所有工具
+     * 根据工具可见性规则返回：
+     * - PUBLIC: 所有应用可访问
+     * - PRIVATE: 仅所属应用可访问
+     * - SHARED: 仅授权应用列表中的应用可访问
+     *
+     * @param appId 应用ID（可为null，仅返回PUBLIC工具）
+     * @return 可访问的工具列表
+     */
+    public List<ToolDescriptor> findAccessibleTools(String appId) {
+        return toolRegistry.values().stream()
+                .filter(ToolDescriptor::isEnabled)
+                .filter(tool -> isAccessible(tool, appId))
+                .toList();
+    }
+
+    /**
+     * 判断工具对指定应用是否可访问
+     */
+    private boolean isAccessible(ToolDescriptor tool, String appId) {
+        ToolVisibility visibility = tool.getVisibility();
+        
+        // 如果未设置可见性，根据appId判断：无appId为公共工具，有appId为应用专属
+        if (visibility == null) {
+            return tool.getAppId() == null || tool.getAppId().equals(appId);
+        }
+        
+        return switch (visibility) {
+            case PUBLIC -> true;
+            case PRIVATE -> appId != null && appId.equals(tool.getAppId());
+            case SHARED -> {
+                if (appId == null) {
+                    yield false;
+                }
+                List<String> authorizedApps = tool.getAuthorizedApps();
+                yield authorizedApps != null && authorizedApps.contains(appId);
+            }
+        };
     }
 
     @Override
@@ -143,42 +195,52 @@ public class DefaultToolBus implements ToolBus {
         // 1. 查找工具
         ToolDescriptor descriptor = toolRegistry.get(toolId);
         if (descriptor == null) {
-            return ToolResult.error(toolId, "TOOL_NOT_FOUND", "工具不存在: " + toolId);
+            ToolResult error = ToolResult.error(toolId, "TOOL_NOT_FOUND", "工具不存在: " + toolId);
+            recordUsage(toolId, context, error, 0L, 0);
+            return error;
         }
 
         // 2. 检查工具状态
         if (!descriptor.isEnabled()) {
-            return ToolResult.error(toolId, "TOOL_DISABLED", "工具已禁用: " + toolId);
+            ToolResult error = ToolResult.error(toolId, "TOOL_DISABLED", "工具已禁用: " + toolId);
+            recordUsage(toolId, context, error, System.currentTimeMillis() - startTime, 0);
+            return error;
         }
 
         // 3. 参数校验
         String validationError = validateParams(descriptor, params);
         if (validationError != null) {
-            return ToolResult.error(toolId, "INVALID_PARAMS", validationError);
+            ToolResult error = ToolResult.error(toolId, "INVALID_PARAMS", validationError);
+            recordUsage(toolId, context, error, System.currentTimeMillis() - startTime, 0);
+            return error;
         }
 
         // 4. 获取执行器
         ToolExecutor executor = executorRegistry.get(descriptor.getExecutorType().toLowerCase());
         if (executor == null) {
-            return ToolResult.error(toolId, "EXECUTOR_NOT_FOUND", 
+            ToolResult error = ToolResult.error(toolId, "EXECUTOR_NOT_FOUND", 
                     "未找到执行器: " + descriptor.getExecutorType());
+            recordUsage(toolId, context, error, System.currentTimeMillis() - startTime, 0);
+            return error;
         }
 
         // 5. 执行工具（带重试）
         int retryCount = 0;
         int maxRetries = Optional.ofNullable(descriptor.getRetryTimes()).orElse(0);
         Exception lastException = null;
+        ToolResult result = null;
 
         while (retryCount <= maxRetries) {
             try {
                 log.info("[DefaultToolBus] 执行工具: {} (类型: {}, 尝试: {}/{})", 
                         descriptor.getName(), descriptor.getExecutorType(), retryCount, maxRetries);
                 
-                ToolResult result = executor.execute(descriptor, params, context);
+                result = executor.execute(descriptor, params, context);
                 result.setExecutionTime(System.currentTimeMillis() - startTime);
                 result.setRetryCount(retryCount);
                 
                 if (result.isSuccess() || !result.shouldRetry()) {
+                    recordUsage(toolId, context, result, result.getExecutionTime(), retryCount);
                     return result;
                 }
                 
@@ -203,7 +265,7 @@ public class DefaultToolBus implements ToolBus {
         }
 
         // 执行失败
-        return ToolResult.builder()
+        result = ToolResult.builder()
                 .toolId(toolId)
                 .success(false)
                 .errorCode("EXECUTION_ERROR")
@@ -212,6 +274,30 @@ public class DefaultToolBus implements ToolBus {
                 .executionTime(System.currentTimeMillis() - startTime)
                 .retryCount(retryCount)
                 .build();
+        
+        recordUsage(toolId, context, result, result.getExecutionTime(), retryCount);
+        return result;
+    }
+
+    /**
+     * 记录工具使用日志
+     */
+    private void recordUsage(String toolId, AgentContext context, ToolResult result, 
+                             Long executionTime, Integer retryCount) {
+        if (historyService != null) {
+            historyService.recordUsage(
+                    toolId,
+                    context != null ? context.getAppId() : null,
+                    context != null ? context.getSessionId() : null,
+                    context != null ? context.getUserId() : null,
+                    context != null ? context.getRequestId() : null,
+                    result.isSuccess(),
+                    result.getErrorCode(),
+                    result.getErrorMessage(),
+                    executionTime,
+                    retryCount
+            );
+        }
     }
 
     @Override

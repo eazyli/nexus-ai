@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -63,9 +64,61 @@ public class IntentResult implements Serializable {
     private List<String> relatedIntents;
 
     /**
+     * 推荐的工具列表（按优先级排序）
+     */
+    @Builder.Default
+    private List<ToolRecommendation> recommendedTools = new ArrayList<>();
+
+    /**
+     * 推理过程（LLM分析过程）
+     */
+    private String reasoning;
+
+    /**
      * 原始分析结果
      */
     private Object rawResult;
+
+    /**
+     * 工具推荐
+     */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class ToolRecommendation implements Serializable {
+        private static final long serialVersionUID = 1L;
+
+        /**
+         * 工具ID
+         */
+        private String toolId;
+
+        /**
+         * 工具名称
+         */
+        private String toolName;
+
+        /**
+         * 推荐理由
+         */
+        private String reason;
+
+        /**
+         * 匹配分数 (0-1)
+         */
+        private double score;
+
+        /**
+         * 历史成功率
+         */
+        private Double historicalSuccessRate;
+
+        /**
+         * 推荐的参数值
+         */
+        private Map<String, Object> suggestedParams;
+    }
 
     /**
      * 情感枚举
