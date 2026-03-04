@@ -32,6 +32,11 @@ public class AppService {
         app.setStatus(1); // 默认启用
         app.setAppSecret(generateAppSecret()); // 自动生成应用密钥
         
+        // 设置默认协作模式
+        if (app.getCollaborationMode() == null || app.getCollaborationMode().isEmpty()) {
+            app.setCollaborationMode("single");
+        }
+        
         aiAppRepository.insert(app);
         log.info("注册应用: {} - {}", app.getAppId(), app.getAppName());
         
@@ -56,6 +61,26 @@ public class AppService {
     }
 
     /**
+     * 按协作模式获取应用
+     */
+    public List<AppDescriptor> getAppsByCollaborationMode(String collaborationMode) {
+        return aiAppRepository.findAllEnabled().stream()
+                .filter(app -> collaborationMode.equals(app.getCollaborationMode()))
+                .map(this::toDescriptor)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 按能力标签获取应用（用于多智能体匹配）
+     */
+    public List<AppDescriptor> getAppsByCapability(String capability) {
+        return aiAppRepository.findAllEnabled().stream()
+                .filter(app -> app.getCapabilities() != null && app.getCapabilities().contains(capability))
+                .map(this::toDescriptor)
+                .collect(Collectors.toList());
+    }
+
+    /**
      * 更新应用
      */
     public AppDescriptor updateApp(String appId, AppDescriptor descriptor) {
@@ -67,11 +92,27 @@ public class AppService {
         app.setCreateTime(existing.getCreateTime());
         app.setUpdateTime(LocalDateTime.now());
         app.setStatus(existing.getStatus());
+        app.setAppSecret(existing.getAppSecret()); // 保留原有密钥
         
         aiAppRepository.updateById(app);
         log.info("更新应用: {}", appId);
         
         return toDescriptor(app);
+    }
+
+    /**
+     * 更新应用交互配置（开场白、示例问题）
+     */
+    public void updateInteraction(String appId, String greeting, List<String> sampleQuestions) {
+        AiApp app = aiAppRepository.findById(appId)
+                .orElseThrow(() -> new IllegalArgumentException("应用不存在: " + appId));
+        
+        app.setGreeting(greeting);
+        app.setSampleQuestions(sampleQuestions);
+        app.setUpdateTime(LocalDateTime.now());
+        
+        aiAppRepository.updateById(app);
+        log.info("更新应用交互配置: {}", appId);
     }
 
     /**
@@ -142,6 +183,11 @@ public class AppService {
         descriptor.setType(app.getAppType());
         descriptor.setTenantId(app.getTenantId());
         descriptor.setEnabled(app.getStatus() != null && app.getStatus() == 1);
+        descriptor.setCapabilities(app.getCapabilities());
+        descriptor.setCollaborationMode(app.getCollaborationMode());
+        descriptor.setExecutionConfig(app.getExecutionConfig());
+        descriptor.setPriority(app.getPriority());
+        descriptor.setIcon(app.getIcon());
         
         // 解析能力ID列表
         if (app.getAbilityIds() != null && !app.getAbilityIds().isEmpty()) {
@@ -149,13 +195,22 @@ public class AppService {
         }
         
         // 构建配置
-        AppDescriptor.AppConfig config = AppDescriptor.AppConfig.builder()
+        AppDescriptor.AppConfig.AppConfigBuilder configBuilder = AppDescriptor.AppConfig.builder()
                 .defaultModelId(app.getDefaultModelId())
                 .systemPrompt(app.getSystemPrompt())
                 .temperature(app.getTemperature() != null ? app.getTemperature().doubleValue() : null)
                 .maxTokens(app.getMaxTokens())
                 .extra(app.getExtraConfig())
-                .build();
+                .greeting(app.getGreeting())
+                .sampleQuestions(app.getSampleQuestions());
+        
+        // 转换变量定义
+        if (app.getVariables() != null) {
+            Map<String, AppDescriptor.VariableDefinition> variables = convertVariables(app.getVariables());
+            configBuilder.variables(variables);
+        }
+        
+        AppDescriptor.AppConfig config = configBuilder.build();
         
         // 限流配置
         if (app.getQpsLimit() != null || app.getDailyLimit() != null) {
@@ -171,6 +226,42 @@ public class AppService {
     }
 
     /**
+     * 转换变量定义
+     */
+    @SuppressWarnings("unchecked")
+    private Map<String, AppDescriptor.VariableDefinition> convertVariables(Map<String, Object> variablesMap) {
+        Map<String, AppDescriptor.VariableDefinition> result = new HashMap<>();
+        
+        variablesMap.forEach((name, obj) -> {
+            if (obj instanceof Map) {
+                Map<String, Object> map = (Map<String, Object>) obj;
+                AppDescriptor.VariableDefinition.VariableDefinitionBuilder builder = AppDescriptor.VariableDefinition.builder()
+                        .name(name)
+                        .type((String) map.getOrDefault("type", "string"))
+                        .defaultValue(map.get("defaultValue"))
+                        .required((Boolean) map.getOrDefault("required", false))
+                        .description((String) map.get("description"));
+                
+                Object validation = map.get("validation");
+                if (validation instanceof Map) {
+                    Map<String, Object> validationMap = (Map<String, Object>) validation;
+                    AppDescriptor.VariableDefinition.ValidationRule rule = AppDescriptor.VariableDefinition.ValidationRule.builder()
+                            .minLength((Integer) validationMap.get("minLength"))
+                            .maxLength((Integer) validationMap.get("maxLength"))
+                            .pattern((String) validationMap.get("pattern"))
+                            .enumValues((List<String>) validationMap.get("enumValues"))
+                            .build();
+                    builder.validation(rule);
+                }
+                
+                result.put(name, builder.build());
+            }
+        });
+        
+        return result;
+    }
+
+    /**
      * 描述符转实体
      */
     private AiApp toEntity(AppDescriptor descriptor) {
@@ -181,6 +272,11 @@ public class AppService {
         app.setAppType(descriptor.getType());
         app.setTenantId(descriptor.getTenantId());
         app.setStatus(descriptor.getEnabled() != null && descriptor.getEnabled() ? 1 : 0);
+        app.setCapabilities(descriptor.getCapabilities());
+        app.setCollaborationMode(descriptor.getCollaborationMode() != null ? descriptor.getCollaborationMode() : "single");
+        app.setExecutionConfig(descriptor.getExecutionConfig());
+        app.setPriority(descriptor.getPriority());
+        app.setIcon(descriptor.getIcon());
         
         if (descriptor.getSceneIds() != null && !descriptor.getSceneIds().isEmpty()) {
             app.setAbilityIds(String.join(",", descriptor.getSceneIds()));
@@ -195,6 +291,13 @@ public class AppService {
                 app.setTemperature(BigDecimal.valueOf(config.getTemperature()));
             }
             app.setExtraConfig(config.getExtra());
+            app.setGreeting(config.getGreeting());
+            app.setSampleQuestions(config.getSampleQuestions());
+            
+            // 转换变量定义
+            if (config.getVariables() != null) {
+                app.setVariables(convertVariablesToMap(config.getVariables()));
+            }
             
             if (config.getRateLimit() != null) {
                 app.setQpsLimit(config.getRateLimit().getRequestsPerSecond());
@@ -203,5 +306,34 @@ public class AppService {
         }
         
         return app;
+    }
+
+    /**
+     * 转换变量定义到Map
+     */
+    private Map<String, Object> convertVariablesToMap(Map<String, AppDescriptor.VariableDefinition> variables) {
+        Map<String, Object> result = new HashMap<>();
+        
+        variables.forEach((name, def) -> {
+            Map<String, Object> varMap = new HashMap<>();
+            varMap.put("name", def.getName());
+            varMap.put("type", def.getType());
+            varMap.put("defaultValue", def.getDefaultValue());
+            varMap.put("required", def.getRequired());
+            varMap.put("description", def.getDescription());
+            
+            if (def.getValidation() != null) {
+                Map<String, Object> validationMap = new HashMap<>();
+                validationMap.put("minLength", def.getValidation().getMinLength());
+                validationMap.put("maxLength", def.getValidation().getMaxLength());
+                validationMap.put("pattern", def.getValidation().getPattern());
+                validationMap.put("enumValues", def.getValidation().getEnumValues());
+                varMap.put("validation", validationMap);
+            }
+            
+            result.put(name, varMap);
+        });
+        
+        return result;
     }
 }

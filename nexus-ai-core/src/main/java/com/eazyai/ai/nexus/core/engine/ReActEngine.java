@@ -10,8 +10,6 @@ import com.eazyai.ai.nexus.api.react.ReActContext;
 import com.eazyai.ai.nexus.api.react.ReActStep;
 import com.eazyai.ai.nexus.api.react.ReflectionResult;
 import com.eazyai.ai.nexus.api.react.ThoughtEvent;
-import com.eazyai.ai.nexus.api.scheduler.PluginScheduler;
-import com.eazyai.ai.nexus.api.scheduler.ScheduleResult;
 import com.eazyai.ai.nexus.core.assistant.AgentAssistant;
 import com.eazyai.ai.nexus.core.assistant.AssistantFactory;
 import com.eazyai.ai.nexus.core.planner.InternalOrchestrator;
@@ -36,10 +34,9 @@ import java.util.function.Consumer;
  *   <li>Reflect - 反思：评估执行效果，必要时调整策略</li>
  * </ol>
  * 
- * <p>架构简化说明：</p>
+ * <p>架构说明：</p>
  * <ul>
- *   <li>合并原有的简单模式和高级模式为统一入口</li>
- *   <li>保留 PluginScheduler 作为内部编排能力</li>
+ *   <li>通过 ToolBus 统一管理工具</li>
  *   <li>通过 ThoughtEvent 回调暴露思考过程</li>
  * </ul>
  */
@@ -49,9 +46,6 @@ public class ReActEngine {
 
     @Autowired
     private AssistantFactory assistantFactory;
-
-    @Autowired(required = false)
-    private PluginScheduler scheduler;
 
     @Autowired(required = false)
     private ReflectionAgent reflectionAgent;
@@ -324,7 +318,7 @@ public class ReActEngine {
                 .success(true)
                 .executionTime(System.currentTimeMillis() - startTime)
                 .steps(toolContext.getExecutionSteps())
-                .usedPlugins(toolContext.getUsedPlugins())
+                .usedTools(toolContext.getUsedTools())
                 .build();
         
         response.getMetadata().put("requestId", requestId);

@@ -65,10 +65,10 @@ public class AgentResponse implements Serializable {
     private TokenUsage tokenUsage;
 
     /**
-     * 使用的插件列表
+     * 使用的工具列表
      */
     @Builder.Default
-    private List<String> usedPlugins = new ArrayList<>();
+    private List<String> usedTools = new ArrayList<>();
 
     /**
      * 扩展数据

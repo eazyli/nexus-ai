@@ -3,13 +3,11 @@ package com.eazyai.ai.nexus.core.planner;
 import com.eazyai.ai.nexus.api.dto.AgentContext;
 import com.eazyai.ai.nexus.api.dto.AgentRequest;
 import com.eazyai.ai.nexus.api.dto.AgentResponse;
-import com.eazyai.ai.nexus.api.integrator.ResultIntegrator;
 import com.eazyai.ai.nexus.api.observability.AgentEvent;
 import com.eazyai.ai.nexus.api.observability.EventListener;
 import com.eazyai.ai.nexus.api.planner.TaskPlan;
-import com.eazyai.ai.nexus.api.registry.PluginRegistry;
-import com.eazyai.ai.nexus.api.scheduler.PluginScheduler;
-import com.eazyai.ai.nexus.api.scheduler.ScheduleResult;
+import com.eazyai.ai.nexus.api.tool.ToolBus;
+import com.eazyai.ai.nexus.api.tool.ToolDescriptor;
 import dev.langchain4j.model.chat.ChatLanguageModel;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,13 +20,6 @@ import java.util.*;
  * 
  * <p>用于处理需要显式编排的复杂任务，不暴露给外部 API。</p>
  * 
- * <p>使用场景：</p>
- * <ul>
- *   <li>需要精确控制执行顺序的多步骤任务</li>
- *   <li>需要 Pipeline 模式传递中间结果</li>
- *   <li>需要并行执行多个独立任务</li>
- * </ul>
- * 
  * <p>说明：此组件是内部实现细节，用户应通过 ReActEngine 统一入口访问。</p>
  */
 @Slf4j
@@ -40,7 +31,7 @@ public class InternalOrchestrator {
             
             用户请求: %s
             
-            可用插件:
+            可用工具:
             %s
             
             请以JSON格式输出执行计划：
@@ -49,7 +40,7 @@ public class InternalOrchestrator {
               "strategy": "SEQUENTIAL/PARALLEL/PIPELINE",
               "steps": [
                 {
-                  "pluginId": "插件ID",
+                  "toolId": "工具ID",
                   "description": "步骤描述",
                   "params": {"参数名": "参数值"}
                 }
@@ -60,14 +51,8 @@ public class InternalOrchestrator {
             只输出JSON，不要包含其他内容。
             """;
 
-    @Autowired(required = false)
-    private PluginScheduler scheduler;
-
-    @Autowired(required = false)
-    private ResultIntegrator integrator;
-
     @Autowired
-    private PluginRegistry pluginRegistry;
+    private ToolBus toolBus;
 
     @Autowired(required = false)
     private ChatLanguageModel chatModel;
@@ -79,11 +64,6 @@ public class InternalOrchestrator {
      * 编排执行复杂任务
      */
     public AgentResponse orchestrate(AgentRequest request) {
-        if (scheduler == null || integrator == null) {
-            log.warn("[InternalOrchestrator] 调度器或整合器不可用");
-            return AgentResponse.error("编排能力不可用");
-        }
-
         long startTime = System.currentTimeMillis();
         String requestId = UUID.randomUUID().toString();
 
@@ -97,28 +77,25 @@ public class InternalOrchestrator {
                     .requestId(requestId)
                     .sessionId(request.getSessionId())
                     .userInput(request.getQuery())
-                    .currentStage(AgentContext.ExecutionStage.SCHEDULING)
+                    .currentStage(AgentContext.ExecutionStage.COMPLETED)
                     .build();
 
-            // 3. 执行调度
+            // 3. 发布事件
             publishEvent(AgentEvent.create(requestId, AgentEvent.EventType.SCHEDULING)
                     .stage("orchestrated_scheduling")
                     .build());
 
-            ScheduleResult scheduleResult = scheduler.schedule(plan, context);
-            context.setCurrentStage(AgentContext.ExecutionStage.INTEGRATING);
-
-            // 4. 整合结果
-            publishEvent(AgentEvent.create(requestId, AgentEvent.EventType.INTEGRATION)
-                    .stage("orchestrated_integration")
-                    .build());
-
-            AgentResponse response = integrator.integrate(scheduleResult, context);
-            context.setCurrentStage(AgentContext.ExecutionStage.COMPLETED);
-
+            // 4. 返回结果
+            AgentResponse response = AgentResponse.builder()
+                    .sessionId(request.getSessionId())
+                    .success(true)
+                    .output("Orchestration plan generated: " + plan.getName())
+                    .build();
+            
             response.setExecutionTime(System.currentTimeMillis() - startTime);
             response.getMetadata().put("requestId", requestId);
             response.getMetadata().put("mode", "orchestrated");
+            response.getMetadata().put("planId", plan.getPlanId());
 
             return response;
 
@@ -138,9 +115,9 @@ public class InternalOrchestrator {
         }
 
         try {
-            String pluginsInfo = formatAvailablePlugins();
+            String toolsInfo = formatAvailableTools();
             String prompt = String.format(PLAN_GENERATION_PROMPT, 
-                    request.getQuery(), pluginsInfo);
+                    request.getQuery(), toolsInfo);
 
             String response = chatModel.generate(prompt);
             return parsePlan(response, request);
@@ -152,14 +129,14 @@ public class InternalOrchestrator {
     }
 
     /**
-     * 格式化可用插件信息
+     * 格式化可用工具信息
      */
-    private String formatAvailablePlugins() {
+    private String formatAvailableTools() {
         StringBuilder sb = new StringBuilder();
-        for (var plugin : pluginRegistry.getAllPlugins()) {
-            if (plugin.isEnabled()) {
-                sb.append("- ").append(plugin.getId())
-                        .append(": ").append(plugin.getDescription())
+        for (ToolDescriptor tool : toolBus.getAllTools()) {
+            if (tool.getEnabled()) {
+                sb.append("- ").append(tool.getToolId())
+                        .append(": ").append(tool.getDescription())
                         .append("\n");
             }
         }

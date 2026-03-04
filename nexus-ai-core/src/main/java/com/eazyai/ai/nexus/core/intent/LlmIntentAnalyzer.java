@@ -4,8 +4,8 @@ import com.eazyai.ai.nexus.api.dto.AgentContext;
 import com.eazyai.ai.nexus.api.dto.AgentRequest;
 import com.eazyai.ai.nexus.api.intent.IntentAnalyzer;
 import com.eazyai.ai.nexus.api.intent.IntentResult;
-import com.eazyai.ai.nexus.api.registry.PluginRegistry;
-import com.eazyai.ai.nexus.api.plugin.PluginDescriptor;
+import com.eazyai.ai.nexus.api.tool.ToolBus;
+import com.eazyai.ai.nexus.api.tool.ToolDescriptor;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.TypeReference;
 import dev.langchain4j.data.message.AiMessage;
@@ -25,7 +25,7 @@ import java.util.stream.Collectors;
  *
  * <p>优化点：</p>
  * <ul>
- *   <li>结合可用插件能力进行分析</li>
+ *   <li>结合可用工具能力进行分析</li>
  *   <li>提取更精确的实体信息</li>
  *   <li>输出结构化JSON便于后续路由</li>
  * </ul>
@@ -38,7 +38,7 @@ public class LlmIntentAnalyzer implements IntentAnalyzer {
     private ChatLanguageModel chatModel;
 
     @Autowired
-    private PluginRegistry pluginRegistry;
+    private ToolBus toolBus;
 
     private static final String INTENT_PROMPT = """
             分析用户输入，提取关键信息。
@@ -77,8 +77,8 @@ public class LlmIntentAnalyzer implements IntentAnalyzer {
         }
 
         try {
-            // 获取可用插件描述
-            String capabilities = getPluginCapabilities();
+            // 获取可用工具描述
+            String capabilities = getToolCapabilities();
 
             // 构建提示词
             String prompt = String.format(INTENT_PROMPT, request.getQuery(), capabilities);
@@ -102,17 +102,17 @@ public class LlmIntentAnalyzer implements IntentAnalyzer {
     }
 
     /**
-     * 获取插件能力描述
+     * 获取工具能力描述
      */
-    private String getPluginCapabilities() {
-        List<PluginDescriptor> plugins = pluginRegistry.getAllPlugins();
-        if (plugins.isEmpty()) {
+    private String getToolCapabilities() {
+        List<ToolDescriptor> tools = toolBus.getAllTools();
+        if (tools.isEmpty()) {
             return "无可用工具";
         }
 
-        return plugins.stream()
-                .filter(PluginDescriptor::isEnabled)
-                .map(p -> String.format("%s: %s", p.getId(), p.getDescription()))
+        return tools.stream()
+                .filter(ToolDescriptor::getEnabled)
+                .map(t -> String.format("%s: %s", t.getToolId(), t.getDescription()))
                 .collect(Collectors.joining("\n"));
     }
 

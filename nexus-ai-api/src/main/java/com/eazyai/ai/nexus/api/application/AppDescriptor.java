@@ -5,6 +5,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.io.Serializable;
 import java.util.List;
 import java.util.Map;
 
@@ -58,6 +59,32 @@ public class AppDescriptor {
     private Boolean enabled;
 
     /**
+     * 能力标签列表（用于多智能体匹配）
+     */
+    private List<String> capabilities;
+
+    /**
+     * 协作模式: single/react/plan_execute/supervisor
+     */
+    @Builder.Default
+    private String collaborationMode = "single";
+
+    /**
+     * Agent执行配置
+     */
+    private Map<String, Object> executionConfig;
+
+    /**
+     * 优先级
+     */
+    private Integer priority;
+
+    /**
+     * 图标URL
+     */
+    private String icon;
+
+    /**
      * 创建时间
      */
     private Long createTime;
@@ -101,6 +128,21 @@ public class AppDescriptor {
         private RateLimitConfig rateLimit;
 
         /**
+         * 变量定义
+         */
+        private Map<String, VariableDefinition> variables;
+
+        /**
+         * 开场白（支持变量注入）
+         */
+        private String greeting;
+
+        /**
+         * 示例问题列表
+         */
+        private List<String> sampleQuestions;
+
+        /**
          * 扩展配置
          */
         private Map<String, Object> extra;
@@ -128,5 +170,80 @@ public class AppDescriptor {
          * token配额
          */
         private Long tokenQuota;
+    }
+
+    /**
+     * 变量定义
+     */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class VariableDefinition implements Serializable {
+        
+        private static final long serialVersionUID = 1L;
+        
+        /**
+         * 变量名
+         */
+        private String name;
+        
+        /**
+         * 变量类型：string, number, boolean, object, array
+         */
+        @Builder.Default
+        private String type = "string";
+        
+        /**
+         * 默认值
+         */
+        private Object defaultValue;
+        
+        /**
+         * 是否必填
+         */
+        @Builder.Default
+        private Boolean required = false;
+        
+        /**
+         * 描述
+         */
+        private String description;
+        
+        /**
+         * 校验规则
+         */
+        private ValidationRule validation;
+        
+        /**
+         * 校验规则
+         */
+        @Data
+        @Builder
+        @NoArgsConstructor
+        @AllArgsConstructor
+        public static class ValidationRule implements Serializable {
+            private static final long serialVersionUID = 1L;
+            
+            /**
+             * 最小长度/值
+             */
+            private Integer minLength;
+            
+            /**
+             * 最大长度/值
+             */
+            private Integer maxLength;
+            
+            /**
+             * 正则表达式
+             */
+            private String pattern;
+            
+            /**
+             * 枚举值
+             */
+            private List<String> enumValues;
+        }
     }
 }

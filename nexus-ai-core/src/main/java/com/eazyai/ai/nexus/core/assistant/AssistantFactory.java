@@ -1,8 +1,5 @@
 package com.eazyai.ai.nexus.core.assistant;
 
-import com.eazyai.ai.nexus.api.plugin.Plugin;
-import com.eazyai.ai.nexus.api.plugin.PluginDescriptor;
-import com.eazyai.ai.nexus.api.registry.PluginRegistry;
 import com.eazyai.ai.nexus.api.tool.ToolBus;
 import com.eazyai.ai.nexus.api.tool.ToolDescriptor;
 import com.eazyai.ai.nexus.core.memory.ChatMemoryStore;
@@ -30,7 +27,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>核心功能：</p>
  * <ul>
  *   <li>自动发现 Spring Bean 中的 @Tool 方法</li>
- *   <li>将 PluginRegistry 中的插件适配为工具</li>
+ *   <li>通过 ToolBus 获取工具并适配</li>
  *   <li>管理会话级 ChatMemory</li>
  * </ul>
  */
@@ -43,9 +40,6 @@ public class AssistantFactory implements SmartInitializingSingleton {
 
     @Autowired(required = false)
     private StreamingChatLanguageModel streamingChatModel;
-
-    @Autowired
-    private PluginRegistry pluginRegistry;
 
     @Autowired
     private ApplicationContext applicationContext;
@@ -388,14 +382,12 @@ public class AssistantFactory implements SmartInitializingSingleton {
     /**
      * 发现所有工具
      * 
-     * 策略：
-     * 1. 扫描 Spring Bean 中带有 @Tool 注解的方法
-     * 2. 注册 PluginRegistry 中的插件作为工具
+     * 策略：扫描 Spring Bean 中带有 @Tool 注解的方法
      */
     private List<Object> discoverTools() {
         List<Object> tools = new ArrayList<>();
 
-        // 1. 扫描 @Tool 注解的 Bean
+        // 扫描 @Tool 注解的 Bean
         Map<String, Object> beans = applicationContext.getBeansWithAnnotation(
             org.springframework.stereotype.Component.class);
         
@@ -403,19 +395,6 @@ public class AssistantFactory implements SmartInitializingSingleton {
             if (hasToolMethods(bean.getClass())) {
                 tools.add(bean);
                 log.debug("发现工具类: {}", bean.getClass().getSimpleName());
-            }
-        }
-
-        // 2. 从 PluginRegistry 获取插件并转换为工具
-        for (PluginDescriptor descriptor : pluginRegistry.getAllPlugins()) {
-            if (descriptor.isEnabled()) {
-                pluginRegistry.getPlugin(descriptor.getId()).ifPresent(plugin -> {
-                    Object toolAdapter = adaptPluginToTool(plugin);
-                    if (toolAdapter != null) {
-                        tools.add(toolAdapter);
-                        log.info("注册插件为工具: {} - {}", descriptor.getId(), descriptor.getName());
-                    }
-                });
             }
         }
 
@@ -437,19 +416,6 @@ public class AssistantFactory implements SmartInitializingSingleton {
             return hasToolMethods(superClass);
         }
         return false;
-    }
-
-    /**
-     * 将 Plugin 适配为 LangChain4j Tool
-     */
-    private Object adaptPluginToTool(Plugin plugin) {
-        // 如果插件已经是工具类（有 @Tool 方法），直接返回
-        if (hasToolMethods(plugin.getClass())) {
-            return plugin;
-        }
-        
-        // 否则创建一个适配器
-        return new PluginToolAdapter(plugin);
     }
 
     /**

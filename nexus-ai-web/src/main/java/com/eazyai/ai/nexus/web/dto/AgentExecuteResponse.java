@@ -42,8 +42,8 @@ public class AgentExecuteResponse {
     @Schema(description = "执行耗时（毫秒）")
     private long executionTime;
 
-    @Schema(description = "使用的插件列表")
-    private List<String> usedPlugins;
+    @Schema(description = "使用的工具列表")
+    private List<String> usedTools;
 
     @Schema(description = "扩展元数据")
     private Map<String, Object> metadata;

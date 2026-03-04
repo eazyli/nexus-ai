@@ -40,7 +40,7 @@ public class ToolExecutionContext {
     private final List<ToolCallRecord> toolCalls = new ArrayList<>();
 
     @Getter
-    private final List<String> usedPlugins = new ArrayList<>();
+    private final List<String> usedTools = new ArrayList<>();
 
     private final long startTime;
 
@@ -116,8 +116,8 @@ public class ToolExecutionContext {
     public void recordToolCall(String toolName, String description, Object input, 
                                Object output, long executionTime, boolean success, String errorMessage) {
         toolCalls.add(new ToolCallRecord(toolName, description, input, output, executionTime, success, errorMessage));
-        if (success && !usedPlugins.contains(toolName)) {
-            usedPlugins.add(toolName);
+        if (success && !usedTools.contains(toolName)) {
+            usedTools.add(toolName);
         }
     }
 

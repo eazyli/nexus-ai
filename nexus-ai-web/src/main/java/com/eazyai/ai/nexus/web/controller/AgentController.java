@@ -2,9 +2,9 @@ package com.eazyai.ai.nexus.web.controller;
 
 import com.eazyai.ai.nexus.api.dto.AgentRequest;
 import com.eazyai.ai.nexus.api.dto.AgentResponse;
-import com.eazyai.ai.nexus.api.plugin.PluginDescriptor;
 import com.eazyai.ai.nexus.api.react.ThoughtEvent;
-import com.eazyai.ai.nexus.api.registry.PluginRegistry;
+import com.eazyai.ai.nexus.api.tool.ToolBus;
+import com.eazyai.ai.nexus.api.tool.ToolDescriptor;
 import com.eazyai.ai.nexus.core.engine.ReActEngine;
 import com.eazyai.ai.nexus.web.dto.AgentExecuteRequest;
 import com.eazyai.ai.nexus.web.dto.AgentExecuteResponse;
@@ -18,7 +18,6 @@ import org.springframework.web.bind.annotation.*;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.function.Consumer;
-import java.util.stream.Collectors;
 
 /**
  * 智能体API控制器
@@ -35,7 +34,7 @@ public class AgentController {
     private ReActEngine reActEngine;
 
     @Autowired
-    private PluginRegistry pluginRegistry;
+    private ToolBus toolBus;
 
     /**
      * 执行智能体任务
@@ -68,64 +67,27 @@ public class AgentController {
                 .errorMessage(response.getErrorMessage())
                 .steps(response.getSteps())
                 .executionTime(response.getExecutionTime())
-                .usedPlugins(response.getUsedPlugins())
+                .usedTools(response.getUsedTools())
                 .metadata(response.getMetadata())
                 .build();
     }
 
     /**
-     * 获取所有可用插件
+     * 获取所有可用工具
      */
-    @GetMapping("/plugins")
-    @Operation(summary = "获取插件列表", description = "获取所有已注册的插件")
-    public List<PluginDescriptor> listPlugins() {
-        return pluginRegistry.getAllPlugins();
+    @GetMapping("/tools")
+    @Operation(summary = "获取工具列表", description = "获取所有已注册的工具")
+    public List<ToolDescriptor> listTools() {
+        return toolBus.getAllTools();
     }
 
     /**
-     * 按类型获取插件
+     * 按能力获取工具
      */
-    @GetMapping("/plugins/type/{type}")
-    @Operation(summary = "按类型获取插件", description = "根据类型筛选插件")
-    public List<PluginInfo> getPluginsByType(@PathVariable("type") String type) {
-        return pluginRegistry.findByType(type).stream()
-                .map(p -> new PluginInfo(p.getDescriptor()))
-                .collect(Collectors.toList());
-    }
-
-    /**
-     * 按能力获取插件
-     */
-    @GetMapping("/plugins/capability/{capability}")
-    @Operation(summary = "按能力获取插件", description = "根据能力筛选插件")
-    public List<PluginInfo> getPluginsByCapability(@PathVariable("capability") String capability) {
-        return pluginRegistry.findByCapability(capability).stream()
-                .map(p -> new PluginInfo(p.getDescriptor()))
-                .collect(Collectors.toList());
-    }
-
-    /**
-     * 插件信息DTO
-     */
-    @lombok.Data
-    public static class PluginInfo {
-        private String id;
-        private String name;
-        private String version;
-        private String type;
-        private String description;
-        private List<String> capabilities;
-        private boolean enabled;
-
-        public PluginInfo(PluginDescriptor descriptor) {
-            this.id = descriptor.getId();
-            this.name = descriptor.getName();
-            this.version = descriptor.getVersion();
-            this.type = descriptor.getType();
-            this.description = descriptor.getDescription();
-            this.capabilities = descriptor.getCapabilities();
-            this.enabled = descriptor.isEnabled();
-        }
+    @GetMapping("/tools/capability/{capability}")
+    @Operation(summary = "按能力获取工具", description = "根据能力筛选工具")
+    public List<ToolDescriptor> getToolsByCapability(@PathVariable("capability") String capability) {
+        return toolBus.findByCapability(capability);
     }
 
     /**
