@@ -4,6 +4,8 @@ import com.eazyai.ai.nexus.api.dto.AgentContext;
 import com.eazyai.ai.nexus.api.dto.AgentRequest;
 import com.eazyai.ai.nexus.api.dto.AgentResponse;
 import com.eazyai.ai.nexus.api.dto.ToolExecutionContext;
+import com.eazyai.ai.nexus.api.intent.IntentAnalyzer;
+import com.eazyai.ai.nexus.api.intent.IntentResult;
 import com.eazyai.ai.nexus.api.observability.AgentEvent;
 import com.eazyai.ai.nexus.api.observability.EventListener;
 import com.eazyai.ai.nexus.api.react.ReActContext;
@@ -12,6 +14,7 @@ import com.eazyai.ai.nexus.api.react.ReflectionResult;
 import com.eazyai.ai.nexus.api.react.ThoughtEvent;
 import com.eazyai.ai.nexus.core.assistant.AgentAssistant;
 import com.eazyai.ai.nexus.core.assistant.AssistantFactory;
+import com.eazyai.ai.nexus.core.assistant.DynamicToolAdapter;
 import com.eazyai.ai.nexus.core.planner.InternalOrchestrator;
 import com.eazyai.ai.nexus.core.reflection.ReflectionAgent;
 import lombok.extern.slf4j.Slf4j;
@@ -46,6 +49,9 @@ public class ReActEngine {
 
     @Autowired
     private AssistantFactory assistantFactory;
+
+    @Autowired(required = false)
+    private IntentAnalyzer intentAnalyzer;
 
     @Autowired(required = false)
     private ReflectionAgent reflectionAgent;
@@ -96,14 +102,21 @@ public class ReActEngine {
                 .userInput(query)
                 .build();
 
+        // 创建完整的 AgentContext，包含所有必要字段用于工具使用日志记录
         AgentContext context = AgentContext.builder()
                 .requestId(requestId)
+                .appId(request.getAppId())
                 .sessionId(sessionId)
+                .userId(request.getUserId())
                 .userInput(request.getQuery())
                 .currentStage(AgentContext.ExecutionStage.INTENT_ANALYSIS)
                 .build();
 
         activeContexts.put(requestId, context);
+
+        // 设置 DynamicToolAdapter 上下文，确保工具执行时能获取完整的上下文信息
+        DynamicToolAdapter.setCurrentRequestId(requestId);
+        DynamicToolAdapter.setCurrentContext(context);
 
         try {
             // 发布开始事件
@@ -175,6 +188,9 @@ public class ReActEngine {
         } finally {
             activeContexts.remove(requestId);
             ToolExecutionContext.clear();
+            // 清理 DynamicToolAdapter 上下文
+            DynamicToolAdapter.clearCurrentRequestId();
+            DynamicToolAdapter.clearCurrentContext();
         }
     }
 
@@ -185,9 +201,49 @@ public class ReActEngine {
     private String executeWithReActLoop(AgentRequest request, String query, 
             String sessionId, ReActContext reactContext, Consumer<ThoughtEvent> thinkingCallback) {
 
+        // 1. 意图分析阶段
+        IntentResult intentResult = null;
+        if (intentAnalyzer != null && request.getAppId() != null) {
+            thinkingCallback.accept(ThoughtEvent.builder()
+                    .type(ThoughtEvent.EventType.THINKING_START)
+                    .content("正在分析用户意图...")
+                    .timestamp(System.currentTimeMillis())
+                    .build());
+            
+            try {
+                AgentContext analysisContext = AgentContext.builder()
+                        .appId(request.getAppId())
+                        .userId(request.getUserId())
+                        .build();
+                intentResult = intentAnalyzer.analyze(request, analysisContext);
+                reactContext.setIntentResult(intentResult);
+                
+                // 发布意图分析事件
+                if (intentResult != null) {
+                    thinkingCallback.accept(ThoughtEvent.builder()
+                            .type(ThoughtEvent.EventType.THOUGHT)
+                            .content(String.format("意图分析完成: %s (置信度: %.2f)", 
+                                    intentResult.getIntentType(), intentResult.getConfidence()))
+                            .timestamp(System.currentTimeMillis())
+                            .build());
+                    
+                    // 如果推荐了工具，记录日志
+                    if (!intentResult.getRecommendedTools().isEmpty()) {
+                        log.info("[ReActEngine] 推荐工具: {}", 
+                                intentResult.getRecommendedTools().stream()
+                                        .map(t -> t.getToolName() + "(" + t.getScore() + ")")
+                                        .toList());
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("[ReActEngine] 意图分析失败，继续执行: {}", e.getMessage());
+            }
+        }
+
+        // 2. 创建 Assistant（带意图上下文）
         AgentAssistant assistant;
         if (request.getAppId() != null) {
-            assistant = assistantFactory.getAssistantByAppId(request.getAppId(), sessionId);
+            assistant = assistantFactory.getAssistantByAppId(request.getAppId(), sessionId, intentResult);
         } else {
             assistant = assistantFactory.getAssistantWithMemory(sessionId);
         }

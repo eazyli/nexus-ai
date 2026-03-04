@@ -47,6 +47,7 @@ public class AgentController {
         AgentRequest agentRequest = AgentRequest.builder()
                 .query(request.getQuery())
                 .appId(request.getAppId())
+                .userId(request.getUserId())
                 .taskType(request.getTaskType())
                 .sessionId(request.getSessionId())
                 .maxIterations(request.getMaxIterations() != null ? request.getMaxIterations() : 10)

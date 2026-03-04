@@ -1,5 +1,6 @@
 package com.eazyai.ai.nexus.api.react;
 
+import com.eazyai.ai.nexus.api.intent.IntentResult;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -58,6 +59,11 @@ public class ReActContext implements Serializable {
      * 最终答案
      */
     private String finalAnswer;
+
+    /**
+     * 意图分析结果
+     */
+    private IntentResult intentResult;
 
     /**
      * 添加步骤

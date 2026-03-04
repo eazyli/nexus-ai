@@ -22,6 +22,9 @@ public class AgentExecuteRequest {
     @Schema(description = "应用ID，用于关联工具和场景", example = "wenhuagong")
     private String appId;
 
+    @Schema(description = "用户ID，用于日志记录和权限控制", example = "user123")
+    private String userId;
+
     @Schema(description = "任务类型", example = "qa")
     private String taskType;
 

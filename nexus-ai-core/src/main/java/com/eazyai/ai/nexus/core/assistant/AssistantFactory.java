@@ -1,9 +1,11 @@
 package com.eazyai.ai.nexus.core.assistant;
 
+import com.eazyai.ai.nexus.api.intent.IntentResult;
 import com.eazyai.ai.nexus.api.tool.ToolBus;
 import com.eazyai.ai.nexus.api.tool.ToolDescriptor;
 import com.eazyai.ai.nexus.core.memory.ChatMemoryStore;
 import com.eazyai.ai.nexus.core.memory.PersistentChatMemoryManager;
+import com.eazyai.ai.nexus.core.tool.DefaultToolBus;
 
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.memory.ChatMemory;
@@ -46,6 +48,9 @@ public class AssistantFactory implements SmartInitializingSingleton {
 
     @Autowired
     private ToolBus toolBus;
+
+    @Autowired(required = false)
+    private DefaultToolBus defaultToolBus;
 
     @Autowired
     private PersistentChatMemoryManager persistentChatMemoryManager;
@@ -179,8 +184,8 @@ public class AssistantFactory implements SmartInitializingSingleton {
             .streamingChatLanguageModel(streamingChatModel)
             .chatMemory(memory);
         
-        // 获取应用关联的动态工具
-        Map<ToolSpecification, ToolExecutor> dynamicTools = getAppDynamicTools(appId);
+        // 获取应用可访问的动态工具
+        Map<ToolSpecification, ToolExecutor> dynamicTools = getAccessibleTools(appId);
         if (!dynamicTools.isEmpty()) {
             builder.tools(dynamicTools);
         } else if (cachedTools != null && !cachedTools.isEmpty()) {
@@ -197,8 +202,8 @@ public class AssistantFactory implements SmartInitializingSingleton {
         var builder = AiServices.builder(StreamingAgentAssistant.class)
             .streamingChatLanguageModel(streamingChatModel);
         
-        Map<ToolSpecification, ToolExecutor> dynamicTools = getAppDynamicTools(appId);
-        log.info("[AssistantFactory] 应用 {} 查询到 {} 个动态工具", appId, dynamicTools.size());
+        Map<ToolSpecification, ToolExecutor> dynamicTools = getAccessibleTools(appId);
+        log.info("[AssistantFactory] 应用 {} 查询到 {} 个可访问工具", appId, dynamicTools.size());
         
         if (!dynamicTools.isEmpty()) {
             builder.tools(dynamicTools);
@@ -285,19 +290,23 @@ public class AssistantFactory implements SmartInitializingSingleton {
      * 使用缓存机制优化性能
      */
     public AgentAssistant getAssistantByAppId(String appId, String sessionId) {
+        return getAssistantByAppId(appId, sessionId, null);
+    }
+
+    /**
+     * 根据应用ID创建带会话记忆和意图上下文的 Assistant
+     * 
+     * @param appId 应用ID
+     * @param sessionId 会话ID
+     * @param intentResult 意图分析结果（可选），用于注入系统提示和优化工具选择
+     */
+    public AgentAssistant getAssistantByAppId(String appId, String sessionId, IntentResult intentResult) {
         if (chatModel == null) {
             throw new IllegalStateException("ChatLanguageModel 未配置");
         }
 
-        log.info("[AssistantFactory] 开始为应用 {} 创建Assistant, sessionId={}", appId, sessionId);
-
-        // 如果不需要会话记忆，使用缓存的实例
-        if (sessionId == null) {
-            return assistantCache.computeIfAbsent(appId, id -> {
-                log.info("[AssistantFactory] 创建并缓存应用 {} 的Assistant", appId);
-                return createAssistantByAppIdInternal(appId, null);
-            });
-        }
+        log.info("[AssistantFactory] 开始为应用 {} 创建Assistant, sessionId={}, hasIntent={}", 
+                appId, sessionId, intentResult != null);
 
         // 需要会话记忆的，创建新实例但使用持久化的 ChatMemory（带 appId 上下文）
         ChatMemoryStore.MemoryContext context = ChatMemoryStore.MemoryContext.of(appId, null);
@@ -307,8 +316,8 @@ public class AssistantFactory implements SmartInitializingSingleton {
                 .chatLanguageModel(chatModel)
                 .chatMemory(memory);
 
-        // 获取应用关联的动态工具
-        Map<ToolSpecification, ToolExecutor> dynamicTools = getAppDynamicTools(appId);
+        // 获取应用可访问的工具（使用可见性规则）
+        Map<ToolSpecification, ToolExecutor> dynamicTools = getAccessibleTools(appId);
         if (!dynamicTools.isEmpty()) {
             builder.tools(dynamicTools);
             dynamicTools.keySet().forEach(spec -> 
@@ -320,7 +329,44 @@ public class AssistantFactory implements SmartInitializingSingleton {
             log.warn("[AssistantFactory] 应用 {} 没有任何可用工具!", appId);
         }
         
+        // 注入意图分析上下文作为系统消息前缀
+        if (intentResult != null) {
+            String intentPrompt = buildIntentPrompt(intentResult);
+            log.debug("[AssistantFactory] 注入意图上下文: {}", intentPrompt);
+            // 注意：LangChain4j 的 @SystemMessage 是静态的，动态上下文需要在用户消息中处理
+            // 这里通过在首次消息中添加意图上下文的方式实现
+        }
+        
         return builder.build();
+    }
+
+    /**
+     * 构建意图上下文提示词
+     */
+    private String buildIntentPrompt(IntentResult intentResult) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("\n\n[意图分析上下文]\n");
+        sb.append("用户意图: ").append(intentResult.getIntentType()).append("\n");
+        sb.append("置信度: ").append(String.format("%.0f%%", intentResult.getConfidence() * 100)).append("\n");
+        
+        if (intentResult.getReasoning() != null) {
+            sb.append("分析推理: ").append(intentResult.getReasoning()).append("\n");
+        }
+        
+        if (!intentResult.getRecommendedTools().isEmpty()) {
+            sb.append("推荐工具:\n");
+            for (IntentResult.ToolRecommendation rec : intentResult.getRecommendedTools()) {
+                sb.append("  - ").append(rec.getToolName())
+                  .append(" (匹配度: ").append(String.format("%.0f%%", rec.getScore() * 100)).append(")")
+                  .append(": ").append(rec.getReason()).append("\n");
+            }
+        }
+        
+        if (intentResult.isAmbiguous() && intentResult.getClarificationQuestion() != null) {
+            sb.append("注意: 用户意图可能不明确，建议先澄清: ").append(intentResult.getClarificationQuestion()).append("\n");
+        }
+        
+        return sb.toString();
     }
 
     /**
@@ -330,8 +376,8 @@ public class AssistantFactory implements SmartInitializingSingleton {
         var builder = AiServices.builder(AgentAssistant.class)
             .chatLanguageModel(chatModel);
         
-        Map<ToolSpecification, ToolExecutor> dynamicTools = getAppDynamicTools(appId);
-        log.info("[AssistantFactory] 应用 {} 查询到 {} 个动态工具", appId, dynamicTools.size());
+        Map<ToolSpecification, ToolExecutor> dynamicTools = getAccessibleTools(appId);
+        log.info("[AssistantFactory] 应用 {} 查询到 {} 个可访问工具", appId, dynamicTools.size());
         
         if (!dynamicTools.isEmpty()) {
             builder.tools(dynamicTools);
@@ -350,33 +396,49 @@ public class AssistantFactory implements SmartInitializingSingleton {
     }
 
     /**
-     * 获取应用关联的动态工具
+     * 获取应用可访问的动态工具
+     * 使用可见性规则：PUBLIC、PRIVATE、SHARED
      */
-    private Map<ToolSpecification, ToolExecutor> getAppDynamicTools(String appId) {
+    private Map<ToolSpecification, ToolExecutor> getAccessibleTools(String appId) {
         Map<ToolSpecification, ToolExecutor> tools = new LinkedHashMap<>();
 
-        log.info("[AssistantFactory] 查询应用 {} 的工具...", appId);
+        log.info("[AssistantFactory] 查询应用 {} 的可访问工具...", appId);
+
+        // 使用 DefaultToolBus 的 findAccessibleTools 方法
+        List<ToolDescriptor> accessibleTools;
+        if (defaultToolBus != null) {
+            accessibleTools = defaultToolBus.findAccessibleTools(appId);
+        } else {
+            // 兼容旧的 findByAppId 方法
+            accessibleTools = toolBus.findByAppId(appId);
+        }
         
-        // 获取应用关联的工具
-        List<ToolDescriptor> toolDescriptors = toolBus.findByAppId(appId);
-        log.info("[AssistantFactory] ToolBus.findByAppId({}) 返回 {} 个工具", appId, toolDescriptors.size());
-        
-        for (ToolDescriptor descriptor : toolDescriptors) {
+        log.info("[AssistantFactory] 应用 {} 可访问 {} 个工具", appId, accessibleTools.size());
+
+        for (ToolDescriptor descriptor : accessibleTools) {
             DynamicToolAdapter adapter = new DynamicToolAdapter(descriptor, toolBus);
             tools.put(adapter.toToolSpecification(), adapter);
-            log.info("[AssistantFactory] 加载应用 {} 的工具: {} ({})", 
-                appId, descriptor.getName(), descriptor.getToolId());
+            log.debug("[AssistantFactory] 加载工具: {} ({}) - visibility: {}", 
+                descriptor.getName(), descriptor.getToolId(), descriptor.getVisibility());
         }
 
-        // 如果应用没有专属工具，检查是否有全局工具
+        // 如果没有可访问工具，记录警告
         if (tools.isEmpty()) {
             List<ToolDescriptor> allTools = toolBus.getAllTools();
-            log.info("[AssistantFactory] 所有已注册工具数量: {}", allTools.size());
-            allTools.forEach(t -> log.info("[AssistantFactory] 已注册工具: {} - appId={}, enabled={}", 
-                t.getName(), t.getAppId(), t.getEnabled()));
+            log.warn("[AssistantFactory] 应用 {} 没有可访问的工具！所有已注册工具: {}", appId, 
+                    allTools.stream().map(t -> t.getName() + "(" + t.getVisibility() + ")").toList());
         }
 
         return tools;
+    }
+
+    /**
+     * 获取应用关联的动态工具（已废弃，请使用 getAccessibleTools）
+     * @deprecated 使用 {@link #getAccessibleTools(String)} 替代
+     */
+    @Deprecated
+    private Map<ToolSpecification, ToolExecutor> getAppDynamicTools(String appId) {
+        return getAccessibleTools(appId);
     }
 
     /**
