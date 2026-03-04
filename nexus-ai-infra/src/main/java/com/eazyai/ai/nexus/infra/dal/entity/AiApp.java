@@ -52,11 +52,6 @@ public class AiApp {
     private Integer dailyLimit;
 
     /**
-     * 可使用的AI能力列表（逗号分隔）
-     */
-    private String abilityIds;
-
-    /**
      * 默认模型ID
      */
     private String defaultModelId;

@@ -26,8 +26,6 @@ public class AiCallLog {
 
     private String appId;
 
-    private String sceneId;
-
     private String sessionId;
 
     private String userId;
@@ -47,11 +45,6 @@ public class AiCallLog {
      * 自然语言回复
      */
     private String naturalResponse;
-
-    /**
-     * 使用的AI能力列表
-     */
-    private String usedAbilities;
 
     /**
      * 使用的工具列表

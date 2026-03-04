@@ -44,11 +44,6 @@ public class AppDescriptor {
     private String tenantId;
 
     /**
-     * 关联的场景ID列表
-     */
-    private List<String> sceneIds;
-
-    /**
      * 应用配置
      */
     private AppConfig config;

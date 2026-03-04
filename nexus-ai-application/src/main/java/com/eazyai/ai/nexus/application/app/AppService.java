@@ -189,11 +189,6 @@ public class AppService {
         descriptor.setPriority(app.getPriority());
         descriptor.setIcon(app.getIcon());
         
-        // 解析能力ID列表
-        if (app.getAbilityIds() != null && !app.getAbilityIds().isEmpty()) {
-            descriptor.setSceneIds(Arrays.asList(app.getAbilityIds().split(",")));
-        }
-        
         // 构建配置
         AppDescriptor.AppConfig.AppConfigBuilder configBuilder = AppDescriptor.AppConfig.builder()
                 .defaultModelId(app.getDefaultModelId())
@@ -277,10 +272,6 @@ public class AppService {
         app.setExecutionConfig(descriptor.getExecutionConfig());
         app.setPriority(descriptor.getPriority());
         app.setIcon(descriptor.getIcon());
-        
-        if (descriptor.getSceneIds() != null && !descriptor.getSceneIds().isEmpty()) {
-            app.setAbilityIds(String.join(",", descriptor.getSceneIds()));
-        }
         
         if (descriptor.getConfig() != null) {
             AppDescriptor.AppConfig config = descriptor.getConfig();

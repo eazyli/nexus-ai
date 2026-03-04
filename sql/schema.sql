@@ -21,16 +21,24 @@ CREATE TABLE `ai_app` (
     `status` TINYINT DEFAULT 1 COMMENT '状态（1启用/0禁用）',
     `qps_limit` INT DEFAULT 100 COMMENT 'QPS限制（通用）',
     `daily_limit` INT DEFAULT 10000 COMMENT '日调用限额（通用）',
-    `ability_ids` VARCHAR(512) COMMENT '可使用的AI能力列表（逗号分隔，通用）',
     `default_model_id` VARCHAR(64) COMMENT '默认模型ID',
     `system_prompt` TEXT COMMENT '系统提示词',
     `temperature` DECIMAL(3,2) DEFAULT 0.70 COMMENT '温度参数',
     `max_tokens` INT DEFAULT 4096 COMMENT '最大Token数',
     `extra_config` JSON COMMENT '扩展配置（JSON）',
+    `capabilities` JSON COMMENT '能力标签列表（用于多智能体匹配）',
+    `collaboration_mode` VARCHAR(32) DEFAULT 'single' COMMENT '协作模式（single/react/plan_execute/supervisor）',
+    `execution_config` JSON COMMENT 'Agent执行配置',
+    `variables` JSON COMMENT '变量定义',
+    `greeting` TEXT COMMENT '开场白',
+    `sample_questions` JSON COMMENT '示例问题列表',
+    `priority` INT DEFAULT 0 COMMENT '优先级（数值越大优先级越高）',
+    `icon` VARCHAR(512) COMMENT '图标URL',
     `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     INDEX `idx_tenant` (`tenant_id`),
-    INDEX `idx_status` (`status`)
+    INDEX `idx_status` (`status`),
+    INDEX `idx_collaboration_mode` (`collaboration_mode`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='业务系统应用表（通用）';
 
 -- ========================================
@@ -57,30 +65,7 @@ CREATE TABLE `ai_mcp_tool` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='MCP工具注册表（通用）';
 
 -- ========================================
--- 3. 场景配置表（通用，适配所有场景）
--- ========================================
-DROP TABLE IF EXISTS `ai_scene`;
-CREATE TABLE `ai_scene` (
-    `scene_id` VARCHAR(64) PRIMARY KEY COMMENT '场景ID（唯一）',
-    `scene_name` VARCHAR(128) NOT NULL COMMENT '场景名称',
-    `description` VARCHAR(512) COMMENT '场景描述',
-    `app_id` VARCHAR(64) COMMENT '所属应用ID（可为空，通用场景）',
-    `scene_type` VARCHAR(32) DEFAULT 'chat' COMMENT '场景类型（chat/rag/tool_calling/workflow/multi_agent）',
-    `ability_ids` VARCHAR(512) NOT NULL COMMENT '启用的AI能力列表（逗号分隔）',
-    `tool_ids` VARCHAR(512) COMMENT '可调用的工具列表（逗号分隔）',
-    `knowledge_ids` VARCHAR(512) COMMENT '绑定的知识库列表（逗号分隔）',
-    `config` JSON NOT NULL COMMENT '场景配置（ReAct/工具/知识库/输出Schema，通用JSON）',
-    `priority` INT DEFAULT 0 COMMENT '优先级（数值越大优先级越高）',
-    `status` TINYINT DEFAULT 1 COMMENT '状态（1启用/0禁用）',
-    `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-    INDEX `idx_app` (`app_id`),
-    INDEX `idx_type` (`scene_type`),
-    INDEX `idx_status` (`status`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='场景配置表（通用）';
-
--- ========================================
--- 4. 知识库表（通用，适配所有知识库类型）
+-- 3. 知识库表（通用，适配所有知识库类型）
 -- ========================================
 DROP TABLE IF EXISTS `ai_knowledge`;
 CREATE TABLE `ai_knowledge` (
@@ -149,38 +134,18 @@ CREATE TABLE `ai_memory` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='记忆表（通用）';
 
 -- ========================================
--- 7. AI能力配置表（通用，支持新增任意AI能力）
--- ========================================
-DROP TABLE IF EXISTS `ai_ability`;
-CREATE TABLE `ai_ability` (
-    `ability_id` VARCHAR(64) PRIMARY KEY COMMENT '能力ID（唯一）',
-    `ability_name` VARCHAR(128) NOT NULL COMMENT '能力名称（如rag/toolCall/generate/decision）',
-    `ability_desc` VARCHAR(512) COMMENT '能力描述（通用）',
-    `ability_type` VARCHAR(32) COMMENT '能力类型',
-    `status` TINYINT DEFAULT 1 COMMENT '状态（1启用/0禁用）',
-    `config` JSON COMMENT '能力配置（通用JSON）',
-    `sort_order` INT DEFAULT 0 COMMENT '排序',
-    `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-    INDEX `idx_type` (`ability_type`),
-    INDEX `idx_status` (`status`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='AI能力配置表（通用，可扩展）';
-
--- ========================================
--- 8. 调用日志表（通用，全平台日志）
+-- 7. 调用日志表（通用，全平台日志）
 -- ========================================
 DROP TABLE IF EXISTS `ai_call_log`;
 CREATE TABLE `ai_call_log` (
     `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
     `request_id` VARCHAR(64) COMMENT '请求ID',
     `app_id` VARCHAR(64) NOT NULL COMMENT '应用ID',
-    `scene_id` VARCHAR(64) COMMENT '场景ID',
     `session_id` VARCHAR(64) COMMENT '会话ID',
     `user_id` VARCHAR(64) COMMENT '用户ID',
     `query` TEXT COMMENT '用户输入',
     `result` JSON COMMENT '调用结果',
     `natural_response` TEXT COMMENT '自然语言回复',
-    `used_abilities` VARCHAR(512) COMMENT '使用的AI能力列表',
     `used_tools` VARCHAR(512) COMMENT '使用的工具列表',
     `execution_steps` INT DEFAULT 0 COMMENT '执行步骤数',
     `execution_time` INT COMMENT '执行耗时（ms）',
@@ -226,7 +191,6 @@ CREATE TABLE `ai_session` (
     `session_id` VARCHAR(64) PRIMARY KEY COMMENT '会话ID',
     `app_id` VARCHAR(64) NOT NULL COMMENT '应用ID',
     `user_id` VARCHAR(64) COMMENT '用户ID',
-    `scene_id` VARCHAR(64) COMMENT '场景ID',
     `title` VARCHAR(256) COMMENT '会话标题',
     `message_count` INT DEFAULT 0 COMMENT '消息数量',
     `last_message` TEXT COMMENT '最后一条消息',
@@ -264,17 +228,12 @@ CREATE TABLE `ai_plugin` (
 -- ========================================
 
 -- 初始化默认应用
-INSERT INTO `ai_app` (`app_id`, `app_name`, `app_secret`, `app_type`, `status`, `ability_ids`) VALUES
-('default-app', '默认应用', 'default-secret-key-12345', 'agent', 1, 'rag,toolCall,generate,decision');
-
--- 初始化AI能力
-INSERT INTO `ai_ability` (`ability_id`, `ability_name`, `ability_desc`, `ability_type`, `status`) VALUES
-('rag', 'RAG检索', '基于知识库的检索增强生成能力', 'retrieval', 1),
-('toolCall', '工具调用', '调用外部工具和API的能力', 'action', 1),
-('generate', '内容生成', '文本、表格、图表等内容生成能力', 'generation', 1),
-('decision', '智能决策', '基于规则引擎的智能决策能力', 'decision', 1),
-('nlu', '意图识别', '自然语言理解和意图识别能力', 'understanding', 1),
-('memory', '记忆管理', '会话记忆和用户记忆管理能力', 'memory', 1);
+INSERT INTO `ai_app` (`app_id`, `app_name`, `app_secret`, `app_type`, `status`,
+    `collaboration_mode`, `capabilities`, `greeting`, `sample_questions`) VALUES
+('default-app', '默认应用', 'default-secret-key-12345', 'agent', 1,
+    'react', '["rag", "tool_calling", "general_qa"]', 
+    '您好，我是您的AI助手。我可以帮您查询天气、检索知识库，或者回答您的问题。',
+    '["今天北京的天气怎么样？", "帮我查一下最新的产品文档", "你能帮我做什么？"]');
 
 -- 初始化默认模型配置
 INSERT INTO `ai_model_config` (`model_id`, `model_name`, `provider`, `model_type`, `model_version`, `max_context`, `status`) VALUES
@@ -283,3 +242,21 @@ INSERT INTO `ai_model_config` (`model_id`, `model_name`, `provider`, `model_type
 ('qwen-max', '通义千问-Max', 'qwen', 'chat', 'qwen-max', 8192, 1),
 ('deepseek-chat', 'DeepSeek Chat', 'deepseek', 'chat', 'deepseek-chat', 32768, 1),
 ('text-embedding-ada-002', 'OpenAI Embedding', 'openai', 'embedding', 'text-embedding-ada-002', 8191, 1);
+
+-- ========================================
+-- 智能体相关视图
+-- ========================================
+
+-- 活跃智能体视图
+CREATE OR REPLACE VIEW `v_active_agents` AS
+SELECT 
+    `app_id`,
+    `app_name`,
+    `app_type`,
+    `collaboration_mode`,
+    `capabilities`,
+    `priority`,
+    `icon`
+FROM `ai_app`
+WHERE `status` = 1 AND `app_type` = 'agent'
+ORDER BY `priority` DESC, `create_time` ASC;

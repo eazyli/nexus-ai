@@ -22,8 +22,6 @@ public class AiSession {
 
     private String userId;
 
-    private String sceneId;
-
     private String title;
 
     /**
