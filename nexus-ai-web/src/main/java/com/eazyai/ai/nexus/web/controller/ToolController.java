@@ -1,13 +1,17 @@
 package com.eazyai.ai.nexus.web.controller;
 
+import com.eazyai.ai.nexus.core.tool.McpProtocolAdapter;
 import com.eazyai.ai.nexus.infra.converter.ToolConverter;
 import com.eazyai.ai.nexus.api.tool.ToolBus;
 import com.eazyai.ai.nexus.api.tool.ToolDescriptor;
 import com.eazyai.ai.nexus.api.tool.ToolResult;
+import com.eazyai.ai.nexus.api.tool.ToolVisibility;
 import com.eazyai.ai.nexus.infra.dal.entity.AiMcpTool;
 import com.eazyai.ai.nexus.infra.dal.repository.AiMcpToolRepository;
 import com.eazyai.ai.nexus.web.dto.DbToolRegisterRequest;
+import com.eazyai.ai.nexus.web.dto.FunctionToolRegisterRequest;
 import com.eazyai.ai.nexus.web.dto.HttpToolRegisterRequest;
+import com.eazyai.ai.nexus.web.dto.McpToolRegisterRequest;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -34,6 +38,7 @@ public class ToolController {
     private final ToolBus toolBus;
     private final AiMcpToolRepository aiMcpToolRepository;
     private final ToolConverter toolConverter;
+    private final McpProtocolAdapter mcpProtocolAdapter;
 
     /**
      * 注册HTTP工具
@@ -125,6 +130,141 @@ public class ToolController {
         // 注册到内存
         toolBus.registerTool(descriptor);
         return ResponseEntity.ok(descriptor);
+    }
+
+    /**
+     * 注册MCP工具（自动发现）
+     */
+    @PostMapping("/mcp/discover")
+    @Operation(summary = "发现并注册MCP工具", description = "连接MCP服务器，自动发现工具并注册")
+    public ResponseEntity<Map<String, Object>> discoverMcpTools(@Valid @RequestBody McpToolRegisterRequest request) {
+        log.info("发现MCP工具: serverUrl={}, appId={}", request.getServerUrl(), request.getAppId());
+        
+        Map<String, Object> config = new HashMap<>();
+        config.put("serverUrl", request.getServerUrl());
+        config.put("transport", request.getTransport());
+        config.put("headers", request.getHeaders());
+        config.put("timeout", request.getTimeout());
+        
+        // 发现并注册工具
+        List<String> toolIds = mcpProtocolAdapter.discoverAndRegister(
+                request.getServerUrl(), 
+                request.getAppId(), 
+                config);
+        
+        Map<String, Object> result = new HashMap<>();
+        result.put("serverUrl", request.getServerUrl());
+        result.put("discoveredCount", toolIds.size());
+        result.put("toolIds", toolIds);
+        result.put("success", true);
+        result.put("message", "成功发现并注册 " + toolIds.size() + " 个MCP工具");
+        
+        return ResponseEntity.ok(result);
+    }
+
+    /**
+     * 注册函数工具
+     */
+    @PostMapping("/function")
+    @Operation(summary = "注册函数工具", description = "动态注册一个函数类型的工具，支持Spring Bean方法、脚本、反射调用")
+    public ResponseEntity<ToolDescriptor> registerFunctionTool(@Valid @RequestBody FunctionToolRegisterRequest request) {
+        log.info("注册函数工具: {} (类型: {})", request.getName(), request.getFunctionType());
+        
+        String toolId = UUID.randomUUID().toString();
+        Map<String, Object> config = buildFunctionConfig(request);
+        
+        // 构建工具描述符
+        ToolDescriptor descriptor = ToolDescriptor.builder()
+                .toolId(toolId)
+                .appId(request.getAppId())
+                .name(request.getName())
+                .description(request.getDescription())
+                .executorType("function")
+                .protocol("internal")
+                .visibility(parseVisibility(request.getVisibility()))
+                .authorizedApps(request.getAuthorizedApps())
+                .capabilities(request.getCapabilities())
+                .parameters(convertParameters(request.getParameters()))
+                .config(config)
+                .timeout(request.getTimeout())
+                .enabled(true)
+                .build();
+        
+        // 保存到数据库
+        AiMcpTool entity = toolConverter.toEntity(descriptor);
+        entity.setToolType("FUNCTION");
+        entity.setCreateTime(LocalDateTime.now());
+        entity.setUpdateTime(LocalDateTime.now());
+        aiMcpToolRepository.insert(entity);
+        
+        // 注册到内存
+        toolBus.registerTool(descriptor);
+        
+        return ResponseEntity.ok(descriptor);
+    }
+
+    /**
+     * 刷新MCP服务器工具
+     */
+    @PostMapping("/mcp/{serverUrl}/refresh")
+    @Operation(summary = "刷新MCP工具", description = "刷新指定MCP服务器的工具列表")
+    public ResponseEntity<Map<String, Object>> refreshMcpTools(
+            @PathVariable("serverUrl") String serverUrl,
+            @RequestParam(required = false) String appId) {
+        log.info("刷新MCP工具: serverUrl={}", serverUrl);
+        
+        // URL解码
+        String decodedUrl = java.net.URLDecoder.decode(serverUrl, java.nio.charset.StandardCharsets.UTF_8);
+        
+        List<String> toolIds = mcpProtocolAdapter.refresh(decodedUrl, appId, new HashMap<>());
+        
+        Map<String, Object> result = new HashMap<>();
+        result.put("serverUrl", decodedUrl);
+        result.put("toolCount", toolIds.size());
+        result.put("toolIds", toolIds);
+        
+        return ResponseEntity.ok(result);
+    }
+
+    /**
+     * 注销MCP服务器工具
+     */
+    @DeleteMapping("/mcp/{serverUrl}")
+    @Operation(summary = "注销MCP服务器工具", description = "注销指定MCP服务器的所有工具")
+    public ResponseEntity<Void> unregisterMcpServer(@PathVariable("serverUrl") String serverUrl) {
+        log.info("注销MCP服务器工具: serverUrl={}", serverUrl);
+        
+        String decodedUrl = java.net.URLDecoder.decode(serverUrl, java.nio.charset.StandardCharsets.UTF_8);
+        mcpProtocolAdapter.unregister(decodedUrl);
+        
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * 获取已注册的MCP服务器列表
+     */
+    @GetMapping("/mcp/servers")
+    @Operation(summary = "获取MCP服务器列表", description = "获取所有已注册的MCP服务器")
+    public ResponseEntity<List<Map<String, Object>>> getMcpServers() {
+        List<Map<String, Object>> servers = new ArrayList<>();
+        
+        for (String serverUrl : mcpProtocolAdapter.getRegisteredServers()) {
+            Map<String, Object> server = new HashMap<>();
+            server.put("serverUrl", serverUrl);
+            server.put("toolCount", mcpProtocolAdapter.getToolCount(serverUrl));
+            servers.add(server);
+        }
+        
+        return ResponseEntity.ok(servers);
+    }
+
+    /**
+     * 获取已注册的执行器类型
+     */
+    @GetMapping("/executors")
+    @Operation(summary = "获取执行器类型列表", description = "获取所有已注册的执行器类型")
+    public ResponseEntity<List<String>> getExecutorTypes() {
+        return ResponseEntity.ok(toolBus.getRegisteredExecutorTypes());
     }
 
     /**
@@ -239,5 +379,70 @@ public class ToolController {
             config.put("parameters", request.getParameters());
         }
         return config;
+    }
+
+    /**
+     * 构建函数工具配置
+     */
+    private Map<String, Object> buildFunctionConfig(FunctionToolRegisterRequest request) {
+        Map<String, Object> config = new HashMap<>();
+        config.put("functionType", request.getFunctionType());
+        
+        // Bean方法调用配置
+        if ("bean".equalsIgnoreCase(request.getFunctionType())) {
+            config.put("beanName", request.getBeanName());
+            config.put("methodName", request.getMethodName());
+        }
+        // 反射调用配置
+        else if ("reflection".equalsIgnoreCase(request.getFunctionType())) {
+            config.put("className", request.getClassName());
+            config.put("methodName", request.getMethodName());
+            config.put("staticMethod", Boolean.TRUE.equals(request.getStaticMethod()));
+        }
+        // 脚本执行配置
+        else if ("script".equalsIgnoreCase(request.getFunctionType())) {
+            config.put("scriptLanguage", request.getScriptLanguage());
+            config.put("script", request.getScript());
+        }
+        
+        // 参数映射
+        if (request.getParamMapping() != null) {
+            config.put("paramMapping", request.getParamMapping());
+        }
+        
+        return config;
+    }
+
+    /**
+     * 解析可见性
+     */
+    private ToolVisibility parseVisibility(String visibility) {
+        if (visibility == null || visibility.isBlank()) {
+            return ToolVisibility.PRIVATE;
+        }
+        try {
+            return ToolVisibility.valueOf(visibility.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return ToolVisibility.PRIVATE;
+        }
+    }
+
+    /**
+     * 转换参数定义
+     */
+    private List<ToolDescriptor.ParamDefinition> convertParameters(List<FunctionToolRegisterRequest.ParamDefinition> params) {
+        if (params == null) {
+            return null;
+        }
+        return params.stream()
+                .map(p -> ToolDescriptor.ParamDefinition.builder()
+                        .name(p.getName())
+                        .type(p.getType())
+                        .description(p.getDescription())
+                        .required(p.getRequired())
+                        .defaultValue(p.getDefaultValue())
+                        .options(p.getOptions())
+                        .build())
+                .toList();
     }
 }
