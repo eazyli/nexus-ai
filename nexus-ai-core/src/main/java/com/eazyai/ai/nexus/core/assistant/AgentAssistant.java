@@ -1,73 +1,54 @@
 package com.eazyai.ai.nexus.core.assistant;
 
-import dev.langchain4j.service.SystemMessage;
+import dev.langchain4j.service.MemoryId;
 import dev.langchain4j.service.UserMessage;
 
 /**
- * 智能助手接口
- * 基于 LangChain4j AiServices 实现
+ * 智能助手接口 - 重构版
  * 
- * <p>核心特性：</p>
+ * <p>核心改进：</p>
+ * <ul>
+ *   <li>使用 @MemoryId 自动关联会话记忆，无需手动管理</li>
+ *   <li>系统消息通过 systemMessageProvider 动态注入（包含意图上下文）</li>
+ *   <li>简化接口，移除冗余方法和模板变量</li>
+ * </ul>
+ * 
+ * <p>LangChain4j 特性：</p>
  * <ul>
  *   <li>自动 Tool Calling - LLM 自动选择并执行工具</li>
  *   <li>自动 ReAct 循环 - 无需手动实现 Thought/Action/Observation</li>
- *   <li>结构化输出 - 支持返回 Java 对象</li>
+ *   <li>自动会话记忆 - 通过 @MemoryId 自动关联</li>
  * </ul>
  */
 public interface AgentAssistant {
 
     /**
-     * 执行用户请求
-     * LLM 会自动判断是否需要调用工具
+     * 执行对话（无会话记忆）
+     * 
+     * <p>系统消息由 systemMessageProvider 动态提供，已包含意图上下文</p>
+     * 
+     * @param userMessage 用户消息
+     * @return 助手响应
      */
-    @SystemMessage("""
-        你是一个智能助手，可以使用工具完成任务。
-        
-        工具使用规则：
-        1. 当用户请求需要工具能力时，自动调用相应的工具
-        2. 工具执行完成后，基于结果回答用户
-        3. 如果不需要工具，直接回答用户问题
-        4. 用中文回答，简洁专业
-        """)
     String chat(@UserMessage String userMessage);
 
     /**
-     * 带会话记忆的对话
-     * 注意：sessionId 通过 AiServices 的 ChatMemory 配置传递，不作为模板变量
+     * 执行对话（带会话记忆）
+     * 
+     * <p>使用 @MemoryId 自动关联会话记忆：
+     * <ul>
+     *   <li>相同 memoryId 的请求会自动共享历史消息</li>
+     *   <li>通过 chatMemoryProvider 统一管理记忆存储</li>
+     * </ul>
+     * 
+     * <p>系统消息由 systemMessageProvider 动态提供，已包含意图上下文</p>
+     * 
+     * @param memoryId 会话标识（自动关联 ChatMemory）
+     * @param userMessage 用户消息
+     * @return 助手响应
      */
-    @SystemMessage("""
-        你是一个智能助手，可以使用工具完成任务。
-
-        工具使用规则：
-        1. 当用户请求需要工具能力时，自动调用相应的工具
-        2. 工具执行完成后，基于结果回答用户
-        3. 如果不需要工具，直接回答用户问题
-        4. 用中文回答，简洁专业
-        5. 记住之前的对话内容，保持上下文连贯
-        """)
-    String chatWithMemory(@UserMessage String userMessage);
-
-    /**
-     * 带意图分析的对话
-     */
-    @SystemMessage("""
-        你是一个智能助手，请先分析用户意图，然后选择合适的工具完成任务。
-        
-        分析步骤：
-        1. 理解用户的核心需求
-        2. 判断是否需要工具支持
-        3. 如需工具，选择最合适的工具执行
-        4. 整合结果，给出专业回答
-        """)
-    AgentResponse chatWithAnalysis(@UserMessage String userMessage);
-
-    /**
-     * Agent 响应结构
-     */
-    record AgentResponse(
-        String intent,
-        String thinking,
-        String toolUsed,
-        String answer
-    ) {}
+    String chatWithMemory(
+        @MemoryId String memoryId,
+        @UserMessage String userMessage
+    );
 }

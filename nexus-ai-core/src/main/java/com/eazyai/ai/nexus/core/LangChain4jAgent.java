@@ -10,18 +10,16 @@ import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 /**
- * 基于 LangChain4j AiServices 的智能体实现
+ * 基于 LangChain4j AiServices 的智能体实现 - 重构版
  * 
- * <p>核心特性：</p>
+ * <p>核心改进：</p>
  * <ul>
- *   <li>自动 Tool Calling - LLM 自动选择并执行工具</li>
- *   <li>自动会话记忆 - 支持多轮对话上下文</li>
- *   <li>结构化输出 - 支持返回 Java 对象</li>
+ *   <li>使用 @MemoryId 自动关联会话记忆</li>
+ *   <li>意图上下文通过 systemMessageProvider 自动注入</li>
  * </ul>
- * 
- * <p>这是替代原 ReActAgent 的新实现，利用 LangChain4j 原生能力。</p>
  */
 @Slf4j
 @Component
@@ -46,21 +44,20 @@ public class LangChain4jAgent implements Agent {
         List<AgentResponse.ExecutionStep> steps = new ArrayList<>();
 
         try {
-            AgentAssistant assistant;
-            
-            // 根据是否需要会话记忆选择不同的 Assistant
-            if (request.getSessionId() != null && !request.getSessionId().isEmpty()) {
-                assistant = assistantFactory.getAssistantWithMemory(request.getSessionId());
-                steps.add(AgentResponse.ExecutionStep.builder()
-                        .stepNumber(1)
-                        .stage("INIT")
-                        .description("初始化带记忆的会话: " + request.getSessionId())
-                        .build());
-            } else {
-                assistant = assistantFactory.getAssistant();
+            // 创建 Assistant
+            AgentAssistant assistant = assistantFactory.createAssistant(request.getAppId(), null);
+
+            String sessionId = request.getSessionId();
+            if (sessionId == null || sessionId.isEmpty()) {
+                sessionId = UUID.randomUUID().toString();
             }
 
-            // 执行请求
+            steps.add(AgentResponse.ExecutionStep.builder()
+                    .stepNumber(1)
+                    .stage("INIT")
+                    .description("初始化会话: " + sessionId)
+                    .build());
+
             steps.add(AgentResponse.ExecutionStep.builder()
                     .stepNumber(2)
                     .stage("EXECUTE")
@@ -68,7 +65,8 @@ public class LangChain4jAgent implements Agent {
                     .input(request.getQuery())
                     .build());
 
-            String result = assistant.chat(request.getQuery());
+            // 使用新接口：@MemoryId 自动关联会话记忆，意图上下文通过 systemMessageProvider 注入
+            String result = assistant.chatWithMemory(sessionId, request.getQuery());
 
             steps.add(AgentResponse.ExecutionStep.builder()
                     .stepNumber(3)
@@ -78,6 +76,7 @@ public class LangChain4jAgent implements Agent {
                     .build());
 
             return AgentResponse.builder()
+                    .sessionId(sessionId)
                     .output(result)
                     .success(true)
                     .steps(steps)
@@ -97,7 +96,6 @@ public class LangChain4jAgent implements Agent {
 
     @Override
     public boolean supports(String taskType) {
-        // 支持所有类型任务
         return true;
     }
 }
