@@ -17,7 +17,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * 默认工具总线实现
  * 统一工具注册、发现、调用的核心枢纽
  *
- * <h3>架构设计：</h3>
+ * <h3>分层架构设计：</h3>
  * <pre>
  * ┌─────────────────────────────────────────────────────────┐
  * │                     协议适配层                           │
@@ -31,14 +31,27 @@ import java.util.concurrent.ConcurrentHashMap;
  * │  │  toolRegistry   │  │    executorRegistry         │  │
  * │  └─────────────────┘  └─────────────────────────────┘  │
  * │                                                        │
- * │  策略模式：根据 executorType 自动路由到对应执行器        │
+ * │  职责：工具注册、发现、原子工具执行                        │
+ * │  注意：编排类执行器由 ToolOrchestrator 管理               │
  * └─────────────────────────┬───────────────────────────────┘
  *                           ↓
  * ┌─────────────────────────────────────────────────────────┐
- * │                    执行器层                             │
+ * │              原子执行器层（不含编排类）                    │
  * │  HttpToolExecutor / DbToolExecutor / FunctionExecutor  │
  * └─────────────────────────────────────────────────────────┘
+ *
+ * ┌─────────────────────────────────────────────────────────┐
+ * │           ToolOrchestrator（编排器，独立管理）            │
+ * │  FlowExecutor 通过编排器执行子工具，打破循环依赖           │
+ * └─────────────────────────────────────────────────────────┘
  * </pre>
+ *
+ * <h3>设计说明：</h3>
+ * <ul>
+ *   <li>ToolBus只管理原子执行器（Http/Db/Function等）</li>
+ *   <li>编排类执行器（FlowExecutor）不纳入ToolBus管理</li>
+ *   <li>通过ToolOrchestrator实现编排执行，避免循环依赖</li>
+ * </ul>
  */
 @Slf4j
 @Component
@@ -61,15 +74,28 @@ public class DefaultToolBus implements ToolBus {
     private ToolUsageHistoryService historyService;
 
     /**
-     * 通过Spring自动注入所有ToolExecutor实现
+     * 注册原子执行器（非编排类）
+     * 
+     * <p>通过配置类显式注入，避免循环依赖。</p>
+     * <p>编排类执行器（如FlowExecutor）不纳入ToolBus管理，由ToolOrchestrator协调。</p>
+     *
+     * @param executor 原子执行器实例
      */
-    @Autowired(required = false)
-    public void setExecutors(List<ToolExecutor> executors) {
+    public void registerAtomicExecutor(ToolExecutor executor) {
+        registerExecutor(executor);
+    }
+
+    /**
+     * 批量注册原子执行器
+     *
+     * @param executors 原子执行器列表
+     */
+    public void registerAtomicExecutors(List<ToolExecutor> executors) {
         if (executors != null) {
             for (ToolExecutor executor : executors) {
-                registerExecutor(executor);
+                registerAtomicExecutor(executor);
             }
-            log.info("[DefaultToolBus] 自动注册 {} 个执行器: {}", 
+            log.info("[DefaultToolBus] 注册 {} 个原子执行器: {}", 
                     executors.size(), executorRegistry.keySet());
         }
     }

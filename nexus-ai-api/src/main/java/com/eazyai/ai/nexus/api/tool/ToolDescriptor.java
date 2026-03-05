@@ -1,5 +1,6 @@
 package com.eazyai.ai.nexus.api.tool;
 
+import com.eazyai.ai.nexus.api.tool.flow.FlowDefinition;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -156,6 +157,22 @@ public class ToolDescriptor implements Serializable {
      */
     private Map<String, Object> metadata;
 
+    // ==================== 流程工具扩展字段 ====================
+
+    /**
+     * 工具类型：ATOMIC（原子工具）或 FLOW（流程工具）
+     * <p>默认为 ATOMIC，表示传统的单工具调用</p>
+     * <p>FLOW 表示由多个工具组合而成的复合工具</p>
+     */
+    @Builder.Default
+    private ToolType toolType = ToolType.ATOMIC;
+
+    /**
+     * 流程定义（仅 toolType == FLOW 时有效）
+     * <p>定义流程的执行步骤、控制结构、变量映射等</p>
+     */
+    private FlowDefinition flowDefinition;
+
     /**
      * 参数定义
      */
@@ -240,5 +257,22 @@ public class ToolDescriptor implements Serializable {
      */
     public boolean isIdempotent() {
         return Boolean.TRUE.equals(idempotent);
+    }
+
+    /**
+     * 判断是否为流程工具
+     */
+    public boolean isFlow() {
+        return toolType == ToolType.FLOW;
+    }
+
+    /**
+     * 工具类型枚举
+     */
+    public enum ToolType {
+        /** 原子工具 - 执行单一操作 */
+        ATOMIC,
+        /** 流程工具 - 由多个工具组合的复合工具 */
+        FLOW
     }
 }

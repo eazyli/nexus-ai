@@ -87,6 +87,9 @@ public class ReActEngine {
             sessionId = java.util.UUID.randomUUID().toString();
         }
 
+        log.info("[ReActEngine] 开始执行请求, requestId={}, appId={}, sessionId={}, isNewSession={}, query={}",
+                requestId, request.getAppId(), sessionId, isNewSession, query);
+
         // 初始化上下文
         ToolExecutionContext.init();
         ReActContext reactContext = ReActContext.builder()
@@ -107,6 +110,8 @@ public class ReActEngine {
         DynamicToolAdapter.setCurrentRequestId(requestId);
         DynamicToolAdapter.setCurrentContext(context);
 
+        log.debug("[ReActEngine] 上下文初始化完成, requestId={}", requestId);
+
         try {
             publishEvent(AgentEvent.create(requestId, AgentEvent.EventType.REQUEST_START)
                     .stage("react_start")
@@ -120,7 +125,9 @@ public class ReActEngine {
                     .build());
 
             // 执行 ReAct 循环
+            log.info("[ReActEngine] 开始执行ReAct循环, requestId={}, sessionId={}", requestId, sessionId);
             String result = executeWithReActLoop(request, query, sessionId, reactContext, thinkingCallback);
+            log.info("[ReActEngine] ReAct循环执行完成, requestId={}, resultLength={}", requestId, result != null ? result.length() : 0);
 
             reactContext.setCompleted(true);
             reactContext.setFinalAnswer(result);
@@ -128,16 +135,21 @@ public class ReActEngine {
 
             // 反思阶段（可选）
             if (shouldReflect(reactContext) && reflectionAgent != null) {
+                log.info("[ReActEngine] 开始反思阶段, requestId={}, toolCallCount={}", requestId, reactContext.getToolCallCount());
                 ReflectionResult reflection = reflectionAgent.reflect(reactContext);
                 thinkingCallback.accept(ThoughtEvent.builder()
                         .type(ThoughtEvent.EventType.REFLECTION)
                         .content(reflection.getSummary())
                         .timestamp(System.currentTimeMillis())
                         .build());
+                log.info("[ReActEngine] 反思阶段完成, requestId={}, summary={}", requestId, reflection.getSummary());
             }
 
             ToolExecutionContext toolContext = ToolExecutionContext.current();
             AgentResponse response = buildResponse(sessionId, requestId, result, startTime, toolContext, reactContext);
+
+            log.info("[ReActEngine] 请求执行成功, requestId={}, executionTime={}ms, toolCalls={}, iterations={}",
+                    requestId, response.getExecutionTime(), reactContext.getToolCallCount(), reactContext.getCurrentIteration());
 
             publishEvent(AgentEvent.create(requestId, AgentEvent.EventType.REQUEST_END)
                     .stage("completed")
@@ -183,6 +195,8 @@ public class ReActEngine {
     private String executeWithReActLoop(AgentRequest request, String query,
             String sessionId, ReActContext reactContext, Consumer<ThoughtEvent> thinkingCallback) {
 
+        log.info("[ReActEngine] 开始意图分析, appId={}, userId={}", request.getAppId(), request.getUserId());
+
         // 1. 意图分析阶段
         IntentResult intentResult = null;
         if (intentAnalyzer != null && request.getAppId() != null) {
@@ -201,6 +215,10 @@ public class ReActEngine {
                 reactContext.setIntentResult(intentResult);
 
                 if (intentResult != null) {
+                    log.info("[ReActEngine] 意图分析完成, intentType={}, confidence={}, recommendedTools={}",
+                            intentResult.getIntentType(), intentResult.getConfidence(),
+                            intentResult.getRecommendedTools().size());
+
                     thinkingCallback.accept(ThoughtEvent.builder()
                             .type(ThoughtEvent.EventType.THOUGHT)
                             .content(String.format("意图分析完成: %s (置信度: %.2f)",
@@ -218,13 +236,20 @@ public class ReActEngine {
             } catch (Exception e) {
                 log.warn("[ReActEngine] 意图分析失败，继续执行: {}", e.getMessage());
             }
+        } else {
+            log.info("[ReActEngine] 跳过意图分析, intentAnalyzer={}, appId={}", 
+                    intentAnalyzer != null ? "存在" : "不存在", request.getAppId());
         }
 
         // 2. 创建 Assistant（意图上下文通过 systemMessageProvider 自动注入）
+        log.info("[ReActEngine] 创建AgentAssistant, appId={}, hasIntentResult={}", 
+                request.getAppId(), intentResult != null);
         AgentAssistant assistant = assistantFactory.createAssistant(request.getAppId(), intentResult);
 
         // 3. 执行对话（@MemoryId 自动关联会话记忆，意图上下文已通过 systemMessageProvider 注入）
+        log.info("[ReActEngine] 开始执行对话, sessionId={}, queryLength={}", sessionId, query.length());
         String result = assistant.chatWithMemory(sessionId, query);
+        log.info("[ReActEngine] 对话执行完成, resultLength={}", result != null ? result.length() : 0);
 
         // 4. 从 ToolExecutionContext 构建 ReAct 步骤
         buildReActStepsFromToolContext(reactContext, thinkingCallback, result);
@@ -239,8 +264,17 @@ public class ReActEngine {
             Consumer<ThoughtEvent> thinkingCallback, String finalResult) {
         ToolExecutionContext toolContext = ToolExecutionContext.current();
         int stepNumber = 1;
+        int totalSteps = toolContext.getExecutionSteps().size();
+
+        log.info("[ReActEngine] 构建ReAct步骤, totalSteps={}, usedTools={}", 
+                totalSteps, toolContext.getUsedTools());
 
         for (AgentResponse.ExecutionStep step : toolContext.getExecutionSteps()) {
+            log.debug("[ReActEngine] 处理执行步骤, stage={}, success={}, inputLength={}, outputLength={}",
+                    step.getStage(), step.isSuccess(),
+                    step.getInput() != null ? step.getInput().toString().length() : 0,
+                    step.getOutput() != null ? step.getOutput().toString().length() : 0);
+
             reactContext.addStep(ReActStep.thought(stepNumber++, "决定调用工具: " + step.getStage()));
             thinkingCallback.accept(ThoughtEvent.toolSelected(step.getStage(),
                     step.getInput() != null ? step.getInput().toString() : ""));
@@ -248,7 +282,7 @@ public class ReActEngine {
             reactContext.addStep(ReActStep.action(stepNumber++,
                     step.getStage(),
                     step.getInput() != null ? step.getInput().toString() : ""));
-            thinkingCallback.accept(ThoughtEvent.toolExecuting(step.getStage()));
+            thinkingCallback.accept(ThoughtEvent.toolExecuting(step.getDescription()));
 
             String output = step.getOutput() != null ? step.getOutput().toString() : "";
             reactContext.addStep(ReActStep.observation(stepNumber++,
@@ -323,25 +357,4 @@ public class ReActEngine {
                 try {
                     listener.onEvent(event);
                 } catch (Exception e) {
-                    log.warn("EventListener {} 处理失败: {}", listener.getName(), e.getMessage());
-                }
-            }
-        }
-    }
-
-    private String escapeTemplateVariables(String input) {
-        if (input == null) {
-            return null;
-        }
-        return input.replace("{{", "{ {").replace("}}", "} }");
-    }
-
-    /**
-     * 流式回调接口
-     */
-    public interface StreamingCallback {
-        void onToken(String token);
-        void onComplete(String fullResponse);
-        void onError(Exception e);
-    }
-}
+   

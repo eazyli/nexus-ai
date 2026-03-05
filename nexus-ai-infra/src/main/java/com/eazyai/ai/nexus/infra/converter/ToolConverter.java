@@ -2,7 +2,9 @@ package com.eazyai.ai.nexus.infra.converter;
 
 import com.eazyai.ai.nexus.api.tool.ToolDescriptor;
 import com.eazyai.ai.nexus.api.tool.ToolVisibility;
+import com.eazyai.ai.nexus.api.tool.flow.FlowDefinition;
 import com.eazyai.ai.nexus.infra.dal.entity.AiMcpTool;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -19,6 +21,8 @@ import java.util.stream.Collectors;
  */
 @Component
 public class ToolConverter {
+    
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     /**
      * 实体转描述符
@@ -38,6 +42,9 @@ public class ToolConverter {
         // 解析授权应用列表
         List<String> authorizedApps = parseAuthorizedApps(entity.getPermissionApps());
         
+        // 解析工具类型
+        ToolDescriptor.ToolType toolType = parseToolType(entity.getToolType());
+        
         ToolDescriptor descriptor = ToolDescriptor.builder()
                 .toolId(entity.getToolId())
                 .appId(entity.getAppId())
@@ -46,6 +53,7 @@ public class ToolConverter {
                 .name(entity.getToolName())
                 .description(entity.getDescription())
                 .executorType(entity.getToolType() != null ? entity.getToolType().toLowerCase() : "http")
+                .toolType(toolType)
                 .enabled(entity.getStatus() != null && entity.getStatus() == 1)
                 .retryTimes(entity.getRetryTimes())
                 .timeout(entity.getTimeout() != null ? entity.getTimeout().longValue() : null)
@@ -88,6 +96,18 @@ public class ToolConverter {
                 }
                 descriptor.setParameters(params);
             }
+            
+            // 从配置中提取流程定义
+            Object flowDefObj = entity.getConfig().get("flowDefinition");
+            if (flowDefObj != null && toolType == ToolDescriptor.ToolType.FLOW) {
+                try {
+                    FlowDefinition flowDefinition = OBJECT_MAPPER.convertValue(
+                            flowDefObj, FlowDefinition.class);
+                    descriptor.setFlowDefinition(flowDefinition);
+                } catch (Exception e) {
+                    // 转换失败，忽略
+                }
+            }
         }
 
         return descriptor;
@@ -112,7 +132,18 @@ public class ToolConverter {
                 String.join(",", descriptor.getAuthorizedApps()) : null);
         entity.setToolName(descriptor.getName());
         entity.setDescription(descriptor.getDescription());
-        entity.setToolType(descriptor.getExecutorType() != null ? descriptor.getExecutorType().toUpperCase() : "HTTP");
+        
+        // 根据工具类型设置 executorType
+        String executorType = descriptor.getExecutorType();
+        if (descriptor.getToolType() == ToolDescriptor.ToolType.FLOW) {
+            executorType = "flow";
+            entity.setToolType("FLOW");
+        } else if (executorType != null) {
+            entity.setToolType(executorType.toUpperCase());
+        } else {
+            entity.setToolType("HTTP");
+        }
+        
         entity.setStatus(Boolean.TRUE.equals(descriptor.getEnabled()) ? 1 : 0);
         entity.setRetryTimes(descriptor.getRetryTimes());
         entity.setTimeout(descriptor.getTimeout() != null ? descriptor.getTimeout().intValue() : null);
@@ -127,6 +158,10 @@ public class ToolConverter {
         }
         if (descriptor.getParameters() != null) {
             config.put("parameters", descriptor.getParameters());
+        }
+        // 保存流程定义
+        if (descriptor.getFlowDefinition() != null) {
+            config.put("flowDefinition", descriptor.getFlowDefinition());
         }
         entity.setConfig(config);
 
@@ -173,5 +208,18 @@ public class ToolConverter {
                 .map(String::trim)
                 .filter(s -> !s.isEmpty())
                 .collect(Collectors.toList());
+    }
+    
+    /**
+     * 解析工具类型
+     */
+    private ToolDescriptor.ToolType parseToolType(String toolType) {
+        if (toolType == null || toolType.isBlank()) {
+            return ToolDescriptor.ToolType.ATOMIC;
+        }
+        if ("FLOW".equalsIgnoreCase(toolType)) {
+            return ToolDescriptor.ToolType.FLOW;
+        }
+        return ToolDescriptor.ToolType.ATOMIC;
     }
 }
