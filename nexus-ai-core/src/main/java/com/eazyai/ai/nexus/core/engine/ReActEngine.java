@@ -357,4 +357,25 @@ public class ReActEngine {
                 try {
                     listener.onEvent(event);
                 } catch (Exception e) {
-   
+                    log.warn("EventListener {} 处理失败: {}", listener.getName(), e.getMessage());
+                }
+            }
+        }
+    }
+
+    private String escapeTemplateVariables(String input) {
+        if (input == null) {
+            return null;
+        }
+        return input.replace("{{", "{ {").replace("}}", "} }");
+    }
+
+    /**
+     * 流式回调接口
+     */
+    public interface StreamingCallback {
+        void onToken(String token);
+        void onComplete(String fullResponse);
+        void onError(Exception e);
+    }
+}
