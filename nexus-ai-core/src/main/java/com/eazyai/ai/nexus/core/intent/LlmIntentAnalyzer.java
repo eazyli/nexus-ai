@@ -104,7 +104,10 @@ public class LlmIntentAnalyzer implements IntentAnalyzer {
     @Override
     public IntentResult analyze(AgentRequest request, AgentContext context) {
         if (chatModel == null) {
-            log.warn("ChatLanguageModel不可用，返回默认意图");
+            log.warn("[LlmIntentAnalyzer] ChatLanguageModel 不可用，返回默认意图, appId={}, query={}", 
+                    context != null ? context.getAppId() : "null", 
+                    request.getQuery() != null && request.getQuery().length() > 50 
+                            ? request.getQuery().substring(0, 50) + "..." : request.getQuery());
             return createDefaultResult(request);
         }
 
@@ -114,7 +117,10 @@ public class LlmIntentAnalyzer implements IntentAnalyzer {
             List<ToolDescriptor> accessibleTools = toolBus.findAccessibleTools(appId);
 
             if (accessibleTools.isEmpty()) {
-                log.warn("应用[{}]无可访问工具", appId);
+                log.warn("[LlmIntentAnalyzer] 应用无可访问工具, appId={}, query={}", 
+                        appId, 
+                        request.getQuery() != null && request.getQuery().length() > 50 
+                                ? request.getQuery().substring(0, 50) + "..." : request.getQuery());
                 return createDefaultResult(request);
             }
 
@@ -149,7 +155,9 @@ public class LlmIntentAnalyzer implements IntentAnalyzer {
             return parseResult(content, request, accessibleTools);
 
         } catch (Exception e) {
-            log.error("意图分析失败", e);
+            log.error("[LlmIntentAnalyzer] 意图分析失败, appId={}, query={}", 
+                    context != null ? context.getAppId() : "null", 
+                    request.getQuery(), e);
             return createDefaultResult(request);
         }
     }

@@ -142,7 +142,7 @@ public class AssistantFactory implements SmartInitializingSingleton {
             throw new IllegalStateException("ChatLanguageModel 未配置");
         }
 
-        log.debug("[AssistantFactory] 创建 Assistant: appId={}, hasIntent={}, hasRag={}", 
+        log.info("[AssistantFactory] 创建 Assistant: appId={}, hasIntent={}, hasRag={}", 
                 appId, intentResult != null, contentRetriever != null);
 
         var builder = AiServices.builder(AgentAssistant.class)
@@ -213,7 +213,7 @@ public class AssistantFactory implements SmartInitializingSingleton {
             throw new IllegalStateException("StreamingChatLanguageModel 未配置");
         }
 
-        log.debug("[AssistantFactory] 创建 StreamingAssistant: appId={}, hasIntent={}, hasRag={}", 
+        log.info("[AssistantFactory] 创建 StreamingAssistant: appId={}, hasIntent={}, hasRag={}", 
                 appId, intentResult != null, contentRetriever != null);
 
         var builder = AiServices.builder(StreamingAgentAssistant.class)
@@ -375,7 +375,7 @@ public class AssistantFactory implements SmartInitializingSingleton {
                 tools.put(adapter.toToolSpecification(), adapter);
             }
             
-            log.debug("[AssistantFactory] 应用 {} 有 {} 个可访问工具", id, tools.size());
+            log.info("[AssistantFactory] 应用 {} 有 {} 个可访问工具", id, tools.size());
             return tools;
         });
     }

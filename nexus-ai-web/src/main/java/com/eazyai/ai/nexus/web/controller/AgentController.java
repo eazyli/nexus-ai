@@ -42,7 +42,11 @@ public class AgentController {
     @PostMapping("/execute")
     @Operation(summary = "执行智能体任务", description = "执行智能体任务，自动完成意图理解、规划、调度、执行和结果整合")
     public AgentExecuteResponse execute(@Valid @RequestBody AgentExecuteRequest request) {
-        log.info("收到执行请求: {}", request.getQuery());
+        long startTime = System.currentTimeMillis();
+        log.info("[AgentController] 收到执行请求, appId={}, userId={}, sessionId={}, query={}", 
+                request.getAppId(), request.getUserId(), request.getSessionId(), 
+                request.getQuery() != null && request.getQuery().length() > 100 
+                        ? request.getQuery().substring(0, 100) + "..." : request.getQuery());
 
         AgentRequest agentRequest = AgentRequest.builder()
                 .query(request.getQuery())
@@ -59,6 +63,11 @@ public class AgentController {
         // 控制台打印 ReAct 步骤
         Consumer<ThoughtEvent> thinkingLogger = createThinkingLogger();
         AgentResponse response = reActEngine.execute(agentRequest, thinkingLogger);
+
+        long totalTime = System.currentTimeMillis() - startTime;
+        log.info("[AgentController] 请求执行完成, appId={}, success={}, executionTime={}ms, totalTime={}ms, toolCalls={}", 
+                request.getAppId(), response.isSuccess(), response.getExecutionTime(), totalTime, 
+                response.getUsedTools() != null ? response.getUsedTools().size() : 0);
 
         return AgentExecuteResponse.builder()
                 .sessionId(response.getSessionId())

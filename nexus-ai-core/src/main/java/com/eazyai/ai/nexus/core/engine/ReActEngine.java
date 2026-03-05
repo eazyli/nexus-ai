@@ -110,7 +110,7 @@ public class ReActEngine {
         DynamicToolAdapter.setCurrentRequestId(requestId);
         DynamicToolAdapter.setCurrentContext(context);
 
-        log.debug("[ReActEngine] 上下文初始化完成, requestId={}", requestId);
+        log.info("[ReActEngine] 上下文初始化完成, requestId={}, sessionId={}", requestId, sessionId);
 
         try {
             publishEvent(AgentEvent.create(requestId, AgentEvent.EventType.REQUEST_START)
@@ -160,7 +160,8 @@ public class ReActEngine {
             return response;
 
         } catch (Exception e) {
-            log.error("[ReActEngine] 执行失败", e);
+            log.error("[ReActEngine] 执行失败, requestId={}, sessionId={}, stage={}", 
+                    requestId, sessionId, context.getCurrentStage(), e);
             context.setCurrentStage(AgentContext.ExecutionStage.FAILED);
             reactContext.addStep(ReActStep.builder()
                     .stepNumber(reactContext.getSteps().size() + 1)

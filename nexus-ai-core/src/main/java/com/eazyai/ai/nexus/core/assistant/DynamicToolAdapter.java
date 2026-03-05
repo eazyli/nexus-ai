@@ -255,6 +255,14 @@ public class DynamicToolAdapter implements ToolExecutor {
                     descriptor.getDescription(), input, resultJson, executionTime, success, errorMessage);
         }
 
+        // 打印执行结果日志
+        if (success) {
+            log.info("[DynamicToolAdapter] 工具执行成功: {} - 耗时: {}ms", descriptor.getName(), executionTime);
+        } else {
+            log.warn("[DynamicToolAdapter] 工具执行失败: {} - 耗时: {}ms - 错误: {}", 
+                    descriptor.getName(), executionTime, errorMessage);
+        }
+
         return resultJson;
     }
 
