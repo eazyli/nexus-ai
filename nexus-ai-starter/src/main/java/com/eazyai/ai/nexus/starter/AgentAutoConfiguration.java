@@ -38,6 +38,7 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 @ComponentScan(basePackages = {
         "com.eazyai.ai.nexus.core",
+        "com.eazyai.ai.nexus.model",
         "com.eazyai.ai.nexus.plugin.manager"
 })
 @EnableConfigurationProperties(NexusProperties.class)

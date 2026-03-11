@@ -6,9 +6,7 @@ import com.eazyai.ai.nexus.api.tool.ToolDescriptor;
 import com.eazyai.ai.nexus.api.tool.ToolResult;
 import com.eazyai.ai.nexus.api.tool.ToolVisibility;
 import com.eazyai.ai.nexus.api.tool.flow.FlowDefinition;
-import com.eazyai.ai.nexus.infra.converter.ToolConverter;
-import com.eazyai.ai.nexus.infra.dal.entity.AiMcpTool;
-import com.eazyai.ai.nexus.infra.dal.repository.AiMcpToolRepository;
+import com.eazyai.ai.nexus.application.app.ToolService;
 import com.eazyai.ai.nexus.web.dto.FlowToolRegisterRequest;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -18,7 +16,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.validation.Valid;
-import java.time.LocalDateTime;
 import java.util.*;
 
 /**
@@ -26,9 +23,7 @@ import java.util.*;
  * 
  * <p>提供流程工具的创建、查询、执行等 REST 接口。</p>
  * <p>流程工具是由多个原子工具组合而成的复合工具，支持串行、并行、条件分支、循环等控制结构。</p>
- *
- * @see FlowDefinition 流程定义
- * @see ToolDescriptor 工具描述符
+ * <p>依赖 application 层的 ToolService，不再直接依赖 infra 层</p>
  */
 @Slf4j
 @RestController
@@ -38,8 +33,7 @@ import java.util.*;
 public class FlowController {
 
     private final ToolBus toolBus;
-    private final AiMcpToolRepository aiMcpToolRepository;
-    private final ToolConverter toolConverter;
+    private final ToolService toolService;
 
     /**
      * 创建流程工具
@@ -54,35 +48,25 @@ public class FlowController {
         
         String toolId = request.getToolId() != null ? request.getToolId() : "flow-" + UUID.randomUUID().toString();
         
-        // 构建工具描述符
-        ToolDescriptor descriptor = ToolDescriptor.builder()
-                .toolId(toolId)
-                .appId(request.getAppId())
-                .name(request.getName())
-                .description(request.getDescription())
-                .executorType("flow")
-                .protocol("internal")
-                .toolType(ToolDescriptor.ToolType.FLOW)
-                .flowDefinition(request.getFlowDefinition())
-                .visibility(parseVisibility(request.getVisibility()))
-                .authorizedApps(request.getAuthorizedApps())
-                .capabilities(request.getCapabilities())
-                .parameters(request.getParameters())
-                .retryTimes(request.getRetryTimes())
-                .timeout(request.getTimeout() != null ? request.getTimeout() : 
-                        (request.getFlowDefinition() != null ? request.getFlowDefinition().getTimeout() : 120000L))
-                .enabled(request.getEnabled() != null ? request.getEnabled() : true)
-                .build();
+        // 构建配置
+        Map<String, Object> config = new HashMap<>();
+        if (request.getFlowDefinition() != null) {
+            config.put("flowDefinition", request.getFlowDefinition());
+        }
         
-        // 保存到数据库
-        AiMcpTool entity = toolConverter.toEntity(descriptor);
-        entity.setToolType("FLOW");
-        entity.setCreateTime(LocalDateTime.now());
-        entity.setUpdateTime(LocalDateTime.now());
-        aiMcpToolRepository.insert(entity);
+        Long timeout = request.getTimeout() != null ? request.getTimeout() : 
+                (request.getFlowDefinition() != null ? request.getFlowDefinition().getTimeout() : 120000L);
         
-        // 注册到内存
-        toolBus.registerTool(descriptor);
+        ToolDescriptor descriptor = toolService.registerFlowTool(
+                toolId,
+                request.getAppId(),
+                request.getName(),
+                request.getDescription(),
+                config,
+                request.getRetryTimes(),
+                timeout,
+                request.getEnabled() != null ? request.getEnabled() : true
+        );
         
         log.info("流程工具创建成功: {} ({})", descriptor.getName(), toolId);
         return ResponseEntity.ok(descriptor);
@@ -94,9 +78,8 @@ public class FlowController {
     @GetMapping("/{flowId}")
     @Operation(summary = "获取流程工具详情", description = "根据流程ID获取流程工具详细信息")
     public ResponseEntity<ToolDescriptor> getFlowTool(@PathVariable("flowId") String flowId) {
-        return aiMcpToolRepository.findById(flowId)
-                .filter(t -> "FLOW".equals(t.getToolType()))
-                .map(toolConverter::toDescriptor)
+        return toolService.getTool(flowId)
+                .filter(t -> "flow".equalsIgnoreCase(t.getExecutorType()))
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
@@ -107,10 +90,7 @@ public class FlowController {
     @GetMapping
     @Operation(summary = "获取流程工具列表", description = "获取所有已注册的流程工具列表")
     public ResponseEntity<List<ToolDescriptor>> listFlowTools() {
-        List<ToolDescriptor> flows = aiMcpToolRepository.findByToolType("FLOW").stream()
-                .filter(t -> t.getStatus() != null && t.getStatus() == 1)
-                .map(toolConverter::toDescriptor)
-                .toList();
+        List<ToolDescriptor> flows = toolService.getToolsByType("FLOW");
         return ResponseEntity.ok(flows);
     }
 
@@ -120,10 +100,8 @@ public class FlowController {
     @GetMapping("/app/{appId}")
     @Operation(summary = "根据应用ID获取流程工具", description = "获取指定应用下的所有流程工具")
     public ResponseEntity<List<ToolDescriptor>> listFlowToolsByAppId(@PathVariable("appId") String appId) {
-        List<ToolDescriptor> flows = aiMcpToolRepository.findByAppId(appId).stream()
-                .filter(t -> "FLOW".equals(t.getToolType()))
-                .filter(t -> t.getStatus() != null && t.getStatus() == 1)
-                .map(toolConverter::toDescriptor)
+        List<ToolDescriptor> flows = toolService.getToolsByAppId(appId).stream()
+                .filter(t -> "flow".equalsIgnoreCase(t.getExecutorType()))
                 .toList();
         return ResponseEntity.ok(flows);
     }
@@ -138,31 +116,23 @@ public class FlowController {
             @Valid @RequestBody FlowToolRegisterRequest request) {
         log.info("更新流程工具: {}", flowId);
         
-        AiMcpTool existing = aiMcpToolRepository.findById(flowId)
-                .orElse(null);
+        ToolDescriptor existing = toolService.getTool(flowId).orElse(null);
         if (existing == null) {
             return ResponseEntity.notFound().build();
         }
         
-        // 更新字段
-        if (request.getName() != null) {
-            existing.setToolName(request.getName());
-        }
-        if (request.getDescription() != null) {
-            existing.setDescription(request.getDescription());
-        }
+        // 构建配置
+        Map<String, Object> config = new HashMap<>();
         if (request.getFlowDefinition() != null) {
-            Map<String, Object> config = new HashMap<>();
             config.put("flowDefinition", request.getFlowDefinition());
-            existing.setConfig(config);
         }
-        existing.setUpdateTime(LocalDateTime.now());
         
-        aiMcpToolRepository.updateById(existing);
-        
-        // 更新内存中的描述符
-        ToolDescriptor descriptor = toolConverter.toDescriptor(existing);
-        toolBus.registerTool(descriptor);
+        ToolDescriptor descriptor = toolService.updateTool(
+                flowId,
+                request.getName(),
+                request.getDescription(),
+                config
+        );
         
         return ResponseEntity.ok(descriptor);
     }
@@ -174,12 +144,7 @@ public class FlowController {
     @Operation(summary = "删除流程工具", description = "删除指定的流程工具")
     public ResponseEntity<Void> deleteFlowTool(@PathVariable("flowId") String flowId) {
         log.info("删除流程工具: {}", flowId);
-        
-        // 从数据库删除
-        aiMcpToolRepository.deleteById(flowId);
-        // 从内存注销
-        toolBus.unregisterTool(flowId);
-        
+        toolService.deleteTool(flowId);
         return ResponseEntity.noContent().build();
     }
 
@@ -219,15 +184,12 @@ public class FlowController {
         
         List<ToolDescriptor> tools;
         if (appId != null) {
-            tools = aiMcpToolRepository.findByAppId(appId).stream()
-                    .filter(t -> t.getStatus() != null && t.getStatus() == 1)
-                    .filter(t -> !"FLOW".equals(t.getToolType()))
-                    .map(toolConverter::toDescriptor)
+            tools = toolService.getToolsByAppId(appId).stream()
+                    .filter(t -> !"flow".equalsIgnoreCase(t.getExecutorType()))
                     .toList();
         } else {
-            tools = aiMcpToolRepository.findAllEnabled().stream()
-                    .filter(t -> !"FLOW".equals(t.getToolType()))
-                    .map(toolConverter::toDescriptor)
+            tools = toolService.getAllTools().stream()
+                    .filter(t -> !"flow".equalsIgnoreCase(t.getExecutorType()))
                     .toList();
         }
         
@@ -277,20 +239,6 @@ public class FlowController {
         result.put("warnings", warnings);
         
         return ResponseEntity.ok(result);
-    }
-    
-    /**
-     * 解析可见性
-     */
-    private ToolVisibility parseVisibility(String visibility) {
-        if (visibility == null || visibility.isBlank()) {
-            return ToolVisibility.PRIVATE;
-        }
-        try {
-            return ToolVisibility.valueOf(visibility.toUpperCase());
-        } catch (IllegalArgumentException e) {
-            return ToolVisibility.PRIVATE;
-        }
     }
     
     /**

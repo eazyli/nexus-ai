@@ -204,12 +204,14 @@ public class JdbcChatMemoryStore implements ChatMemoryStore {
      * ChatMessage.text() 已弃用，需要根据具体消息类型获取文本
      */
     private String getTextFromMessage(ChatMessage message) {
-        return switch (message) {
+        String text = switch (message) {
             case AiMessage aiMessage -> aiMessage.text();
             case UserMessage userMessage -> userMessage.singleText();
             case SystemMessage systemMessage -> systemMessage.text();
             case ToolExecutionResultMessage toolMessage -> toolMessage.text();
             default -> null;
         };
+        // 确保返回非 null 值，避免数据库 NOT NULL 约束错误
+        return text != null ? text : "";
     }
 }

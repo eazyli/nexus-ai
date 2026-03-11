@@ -23,13 +23,6 @@
             <version>${project.version}</version>
         </dependency>
         
-        <!-- 基础设施层 -->
-        <dependency>
-            <groupId>com.eazyai</groupId>
-            <artifactId>nexus-ai-infra</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-        
         <!-- 核心能力层 -->
         <dependency>
             <groupId>com.eazyai</groupId>

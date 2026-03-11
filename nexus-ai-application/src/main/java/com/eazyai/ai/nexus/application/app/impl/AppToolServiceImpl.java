@@ -1,10 +1,10 @@
 package com.eazyai.ai.nexus.application.app.impl;
 
 import com.eazyai.ai.nexus.api.dto.AppToolResponse;
+import com.eazyai.ai.nexus.api.tool.McpToolRepository;
+import com.eazyai.ai.nexus.api.tool.McpToolRepository.ToolEntity;
 import com.eazyai.ai.nexus.api.tool.ToolDescriptor;
 import com.eazyai.ai.nexus.application.app.AppToolService;
-import com.eazyai.ai.nexus.infra.dal.entity.AiMcpTool;
-import com.eazyai.ai.nexus.infra.dal.repository.AiMcpToolRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -22,18 +22,20 @@ import java.util.stream.Collectors;
  *   <li>app_id - 工具的所属/创建者应用</li>
  *   <li>permission_apps - 可调用该工具的应用列表（逗号分隔）</li>
  * </ul>
+ * 
+ * <p>依赖 api 层定义的 Repository 接口，由 infra 层实现</p>
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class AppToolServiceImpl implements AppToolService {
 
-    private final AiMcpToolRepository toolRepository;
+    private final McpToolRepository toolRepository;
 
     @Override
     public List<ToolDescriptor> getAvailableTools(String appId) {
         // 获取所有启用的工具
-        List<AiMcpTool> allTools = toolRepository.findAllEnabled();
+        List<ToolEntity> allTools = toolRepository.findAllEnabled();
         
         return allTools.stream()
                 .filter(tool -> isToolAvailableForApp(appId, tool))
@@ -43,17 +45,17 @@ public class AppToolServiceImpl implements AppToolService {
 
     @Override
     public List<AppToolResponse> getBoundTools(String appId) {
-        List<AiMcpTool> allTools = toolRepository.findAllEnabled();
+        List<ToolEntity> allTools = toolRepository.findAllEnabled();
         
         return allTools.stream()
                 .filter(tool -> isToolBoundToApp(appId, tool))
                 .map(tool -> AppToolResponse.builder()
-                        .toolId(tool.getToolId())
-                        .toolName(tool.getToolName())
-                        .toolType(tool.getToolType())
-                        .description(tool.getDescription())
-                        .enabled(tool.getStatus() != null && tool.getStatus() == 1)
-                        .bindTime(tool.getUpdateTime())
+                        .toolId(tool.toolId())
+                        .toolName(tool.toolName())
+                        .toolType(tool.toolType())
+                        .description(tool.description())
+                        .enabled(tool.status() != null && tool.status() == 1)
+                        .bindTime(tool.updateTime())
                         .build())
                 .collect(Collectors.toList());
     }
@@ -66,17 +68,31 @@ public class AppToolServiceImpl implements AppToolService {
         }
         
         for (String toolId : toolIds) {
-            AiMcpTool tool = toolRepository.findById(toolId)
+            ToolEntity tool = toolRepository.findById(toolId)
                     .orElseThrow(() -> new IllegalArgumentException("工具不存在: " + toolId));
             
             // 将应用添加到权限列表
-            Set<String> allowedApps = parsePermissionApps(tool.getPermissionApps());
+            Set<String> allowedApps = parsePermissionApps(tool.permissionApps());
             
             if (!allowedApps.contains(appId)) {
                 allowedApps.add(appId);
-                tool.setPermissionApps(String.join(",", allowedApps));
-                tool.setUpdateTime(LocalDateTime.now());
-                toolRepository.updateById(tool);
+                ToolEntity updatedTool = new ToolEntity(
+                        tool.toolId(),
+                        tool.toolName(),
+                        tool.toolType(),
+                        tool.description(),
+                        tool.config(),
+                        tool.appId(),
+                        tool.visibility(),
+                        tool.status(),
+                        String.join(",", allowedApps),
+                        tool.retryTimes(),
+                        tool.retryInterval(),
+                        tool.timeout(),
+                        tool.createTime(),
+                        LocalDateTime.now()
+                );
+                toolRepository.update(updatedTool);
                 log.info("绑定工具 {} 到应用 {}", toolId, appId);
             }
         }
@@ -85,16 +101,30 @@ public class AppToolServiceImpl implements AppToolService {
     @Override
     @Transactional
     public void unbindTool(String appId, String toolId) {
-        AiMcpTool tool = toolRepository.findById(toolId)
+        ToolEntity tool = toolRepository.findById(toolId)
                 .orElseThrow(() -> new IllegalArgumentException("工具不存在: " + toolId));
         
         // 从权限列表中移除应用
-        Set<String> allowedApps = parsePermissionApps(tool.getPermissionApps());
+        Set<String> allowedApps = parsePermissionApps(tool.permissionApps());
         
         if (allowedApps.remove(appId)) {
-            tool.setPermissionApps(allowedApps.isEmpty() ? null : String.join(",", allowedApps));
-            tool.setUpdateTime(LocalDateTime.now());
-            toolRepository.updateById(tool);
+            ToolEntity updatedTool = new ToolEntity(
+                    tool.toolId(),
+                    tool.toolName(),
+                    tool.toolType(),
+                    tool.description(),
+                    tool.config(),
+                    tool.appId(),
+                    tool.visibility(),
+                    tool.status(),
+                    allowedApps.isEmpty() ? null : String.join(",", allowedApps),
+                    tool.retryTimes(),
+                    tool.retryInterval(),
+                    tool.timeout(),
+                    tool.createTime(),
+                    LocalDateTime.now()
+            );
+            toolRepository.update(updatedTool);
             log.info("解绑工具 {} 从应用 {}", toolId, appId);
         }
     }
@@ -125,8 +155,8 @@ public class AppToolServiceImpl implements AppToolService {
 
     @Override
     public boolean isToolAvailable(String appId, String toolId) {
-        AiMcpTool tool = toolRepository.findById(toolId).orElse(null);
-        if (tool == null || tool.getStatus() == null || tool.getStatus() != 1) {
+        ToolEntity tool = toolRepository.findById(toolId).orElse(null);
+        if (tool == null || tool.status() == null || tool.status() != 1) {
             return false;
         }
         return isToolAvailableForApp(appId, tool);
@@ -142,19 +172,19 @@ public class AppToolServiceImpl implements AppToolService {
      *   <li>应用在权限列表中（permission_apps包含appId）</li>
      * </ul>
      */
-    private boolean isToolAvailableForApp(String appId, AiMcpTool tool) {
+    private boolean isToolAvailableForApp(String appId, ToolEntity tool) {
         // 工具禁用则不可用
-        if (tool.getStatus() == null || tool.getStatus() != 1) {
+        if (tool.status() == null || tool.status() != 1) {
             return false;
         }
         
         // 工具属于该应用
-        if (appId != null && appId.equals(tool.getAppId())) {
+        if (appId != null && appId.equals(tool.appId())) {
             return true;
         }
         
         // 检查权限列表
-        String permissionApps = tool.getPermissionApps();
+        String permissionApps = tool.permissionApps();
         if (permissionApps == null || permissionApps.isEmpty()) {
             // 全局工具，所有应用可用
             return true;
@@ -167,14 +197,14 @@ public class AppToolServiceImpl implements AppToolService {
     /**
      * 检查工具是否已绑定到应用（有使用权限）
      */
-    private boolean isToolBoundToApp(String appId, AiMcpTool tool) {
+    private boolean isToolBoundToApp(String appId, ToolEntity tool) {
         // 工具属于该应用
-        if (appId != null && appId.equals(tool.getAppId())) {
+        if (appId != null && appId.equals(tool.appId())) {
             return true;
         }
         
         // 检查权限列表
-        String permissionApps = tool.getPermissionApps();
+        String permissionApps = tool.permissionApps();
         if (permissionApps == null || permissionApps.isEmpty()) {
             // 全局工具
             return true;
@@ -200,17 +230,17 @@ public class AppToolServiceImpl implements AppToolService {
     /**
      * 实体转描述符
      */
-    private ToolDescriptor toToolDescriptor(AiMcpTool tool) {
+    private ToolDescriptor toToolDescriptor(ToolEntity tool) {
         return ToolDescriptor.builder()
-                .toolId(tool.getToolId())
-                .appId(tool.getAppId())
-                .name(tool.getToolName())
-                .description(tool.getDescription())
-                .executorType(tool.getToolType())
-                .config(tool.getConfig())
-                .retryTimes(tool.getRetryTimes())
-                .timeout(tool.getTimeout() != null ? tool.getTimeout().longValue() : null)
-                .enabled(tool.getStatus() != null && tool.getStatus() == 1)
+                .toolId(tool.toolId())
+                .appId(tool.appId())
+                .name(tool.toolName())
+                .description(tool.description())
+                .executorType(tool.toolType())
+                .config(tool.config())
+                .retryTimes(tool.retryTimes())
+                .timeout(tool.timeout() != null ? tool.timeout().longValue() : null)
+                .enabled(tool.status() != null && tool.status() == 1)
                 .build();
     }
 }

@@ -1,10 +1,7 @@
 package com.eazyai.ai.nexus.web.service;
 
-import com.eazyai.ai.nexus.api.tool.ToolBus;
 import com.eazyai.ai.nexus.api.tool.ToolDescriptor;
-import com.eazyai.ai.nexus.infra.converter.ToolConverter;
-import com.eazyai.ai.nexus.infra.dal.entity.AiMcpTool;
-import com.eazyai.ai.nexus.infra.dal.repository.AiMcpToolRepository;
+import com.eazyai.ai.nexus.application.app.ToolService;
 import com.eazyai.ai.nexus.web.dto.BatchToolImportRequest;
 import com.eazyai.ai.nexus.web.dto.BatchToolImportResponse;
 import lombok.RequiredArgsConstructor;
@@ -12,20 +9,19 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-import java.time.LocalDateTime;
 import java.util.*;
 
 /**
  * 工具导入服务
+ * 
+ * <p>依赖 application 层的 ToolService，不再直接依赖 infra 层</p>
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class ToolImportService {
 
-    private final AiMcpToolRepository aiMcpToolRepository;
-    private final ToolBus toolBus;
-    private final ToolConverter toolConverter;
+    private final ToolService toolService;
 
     /**
      * 批量导入工具
@@ -82,9 +78,9 @@ public class ToolImportService {
         String toolName = toolDef.getName();
 
         // 检查是否已存在同名工具
-        List<AiMcpTool> existingTools = aiMcpToolRepository.findByAppId(appId);
-        Optional<AiMcpTool> existing = existingTools.stream()
-                .filter(t -> toolName.equals(t.getToolName()))
+        List<ToolDescriptor> existingTools = toolService.getToolsByAppId(appId);
+        Optional<ToolDescriptor> existing = existingTools.stream()
+                .filter(t -> toolName.equals(t.getName()))
                 .findFirst();
 
         if (existing.isPresent() && !overwrite) {
@@ -93,8 +89,7 @@ public class ToolImportService {
 
         if (existing.isPresent() && overwrite) {
             // 删除旧工具
-            aiMcpToolRepository.deleteById(existing.get().getToolId());
-            toolBus.unregisterTool(existing.get().getToolId());
+            toolService.deleteTool(existing.get().getToolId());
         }
 
         // 构建配置
@@ -110,23 +105,17 @@ public class ToolImportService {
             config.put("capabilities", toolDef.getCapabilities());
         }
 
-        // 保存到数据库
-        AiMcpTool entity = new AiMcpTool();
-        entity.setToolId(toolId);
-        entity.setAppId(appId);
-        entity.setToolName(toolName);
-        entity.setDescription(toolDef.getDescription());
-        entity.setToolType("HTTP");
-        entity.setConfig(config);
-        entity.setStatus(1);
-        entity.setCreateTime(LocalDateTime.now());
-        entity.setUpdateTime(LocalDateTime.now());
-        aiMcpToolRepository.insert(entity);
+        // 注册工具
+        ToolDescriptor descriptor = toolService.registerHttpTool(
+                toolId,
+                appId,
+                toolName,
+                toolDef.getDescription(),
+                config,
+                null,
+                null
+        );
 
-        // 注册到内存
-        ToolDescriptor descriptor = toolConverter.toDescriptor(entity);
-        toolBus.registerTool(descriptor);
-
-        return toolId;
+        return descriptor.getToolId();
     }
 }

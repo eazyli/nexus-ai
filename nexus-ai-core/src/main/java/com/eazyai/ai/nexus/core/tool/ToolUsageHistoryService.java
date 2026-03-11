@@ -142,7 +142,10 @@ public class ToolUsageHistoryService {
             String toolId = (String) stat.get("tool_id");
             Long totalCalls = ((Number) stat.get("total_calls")).longValue();
             Long successCalls = ((Number) stat.get("success_calls")).longValue();
-            Double avgTime = (Double) stat.get("avg_execution_time");
+            // 使用 Number 类型处理 BigDecimal
+            Double avgTime = stat.get("avg_execution_time") != null 
+                ? ((Number) stat.get("avg_execution_time")).doubleValue() 
+                : null;
 
             Map<String, Object> toolStat = new HashMap<>();
             toolStat.put("totalCalls", totalCalls);
@@ -216,10 +219,11 @@ public class ToolUsageHistoryService {
         sb.append("|--------|----------|--------|-------------|\n");
 
         stats.forEach((toolId, stat) -> {
+            Double successRate = (Double) stat.get("successRate");
             sb.append(String.format("| %s | %d | %.1f%% | %d |\n",
                     toolId,
                     stat.get("totalCalls"),
-                    ((Double) stat.get("successRate")) * 100,
+                    successRate * 100,
                     stat.get("avgExecutionTime")));
         });
 

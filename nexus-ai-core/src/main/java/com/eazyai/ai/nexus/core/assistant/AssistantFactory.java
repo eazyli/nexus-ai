@@ -3,6 +3,7 @@ package com.eazyai.ai.nexus.core.assistant;
 import com.eazyai.ai.nexus.api.intent.IntentResult;
 import com.eazyai.ai.nexus.api.tool.ToolBus;
 import com.eazyai.ai.nexus.api.tool.ToolDescriptor;
+import com.eazyai.ai.nexus.core.rag.knowledge.KnowledgeRetrieverFactory;
 import com.eazyai.ai.nexus.core.memory.ChatMemoryStore;
 import com.eazyai.ai.nexus.core.memory.PersistentChatMemoryManager;
 import com.eazyai.ai.nexus.core.tool.DefaultToolBus;
@@ -57,6 +58,9 @@ public class AssistantFactory implements SmartInitializingSingleton {
 
     @Autowired
     private PersistentChatMemoryManager persistentChatMemoryManager;
+
+    @Autowired(required = false)
+    private KnowledgeRetrieverFactory knowledgeRetrieverFactory;
 
     // 默认工具实例缓存
     private List<Object> cachedDefaultTools;
@@ -113,13 +117,19 @@ public class AssistantFactory implements SmartInitializingSingleton {
      * <ul>
      *   <li>systemMessageProvider - 动态注入意图上下文</li>
      *   <li>chatMemoryProvider - 自动管理会话记忆</li>
+     *   <li>contentRetriever - 自动进行 RAG 检索（如果应用关联了知识库）</li>
      * </ul>
      * 
-     * @param appId 应用ID（可选，用于工具过滤）
+     * @param appId 应用ID（可选，用于工具过滤和知识库关联）
      * @param intentResult 意图分析结果（可选，用于系统消息注入）
      */
     public AgentAssistant createAssistant(String appId, IntentResult intentResult) {
-        return createAssistant(appId, intentResult, null);
+        // 尝试自动创建知识库检索器
+        ContentRetriever contentRetriever = null;
+        if (appId != null && knowledgeRetrieverFactory != null) {
+            contentRetriever = knowledgeRetrieverFactory.createForApp(appId);
+        }
+        return createAssistant(appId, intentResult, contentRetriever);
     }
 
     /**

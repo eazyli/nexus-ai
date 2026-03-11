@@ -1,14 +1,17 @@
 package com.eazyai.ai.nexus.web;
 
-import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.ComponentScan;
+import org.springframework.scheduling.annotation.EnableAsync;
 
 /**
  * AI Agent Web应用启动类
+ * 
+ * <p>Web层只负责启动应用，基础设施配置由infra层提供</p>
  */
 @SpringBootApplication
+@EnableAsync
 @ComponentScan(basePackages = {
         "com.eazyai.ai.nexus.core",
         "com.eazyai.ai.nexus.tools",
@@ -16,7 +19,6 @@ import org.springframework.context.annotation.ComponentScan;
         "com.eazyai.ai.nexus.infra",
         "com.eazyai.ai.nexus.application"
 })
-@MapperScan("com.eazyai.ai.nexus.infra.dal.mapper")
 public class AgentWebApplication {
 
     public static void main(String[] args) {

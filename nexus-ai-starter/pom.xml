@@ -26,6 +26,11 @@
             <artifactId>nexus-ai-core</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <dependency>
+            <groupId>com.eazyai</groupId>
+            <artifactId>nexus-ai-model</artifactId>
+            <version>${project.version}</version>
+        </dependency>
 
         <dependency>
             <groupId>com.eazyai</groupId>

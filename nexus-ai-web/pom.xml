@@ -16,25 +16,14 @@
     <description>智能体Web服务 - REST API接口</description>
 
     <dependencies>
-        <!-- 依赖API层 -->
-        <dependency>
-            <groupId>com.eazyai</groupId>
-            <artifactId>nexus-ai-api</artifactId>
-            <version>${project.version}</version>
-        </dependency>
         <!-- 依赖应用层 -->
         <dependency>
             <groupId>com.eazyai</groupId>
             <artifactId>nexus-ai-application</artifactId>
             <version>${project.version}</version>
         </dependency>
-        <!-- 依赖核心层 -->
-        <dependency>
-            <groupId>com.eazyai</groupId>
-            <artifactId>nexus-ai-core</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-        <!-- 依赖基础设施层 -->
+        
+        <!-- 依赖基础设施层（数据库、缓存等运行时支持） -->
         <dependency>
             <groupId>com.eazyai</groupId>
             <artifactId>nexus-ai-infra</artifactId>

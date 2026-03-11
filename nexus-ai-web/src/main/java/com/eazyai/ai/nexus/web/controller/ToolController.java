@@ -1,13 +1,11 @@
 package com.eazyai.ai.nexus.web.controller;
 
-import com.eazyai.ai.nexus.core.tool.McpProtocolAdapter;
-import com.eazyai.ai.nexus.infra.converter.ToolConverter;
 import com.eazyai.ai.nexus.api.tool.ToolBus;
 import com.eazyai.ai.nexus.api.tool.ToolDescriptor;
 import com.eazyai.ai.nexus.api.tool.ToolResult;
 import com.eazyai.ai.nexus.api.tool.ToolVisibility;
-import com.eazyai.ai.nexus.infra.dal.entity.AiMcpTool;
-import com.eazyai.ai.nexus.infra.dal.repository.AiMcpToolRepository;
+import com.eazyai.ai.nexus.application.app.ToolService;
+import com.eazyai.ai.nexus.core.tool.McpProtocolAdapter;
 import com.eazyai.ai.nexus.web.dto.DbToolRegisterRequest;
 import com.eazyai.ai.nexus.web.dto.FunctionToolRegisterRequest;
 import com.eazyai.ai.nexus.web.dto.HttpToolRegisterRequest;
@@ -20,13 +18,14 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.validation.Valid;
-import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
 /**
  * 工具管理控制器
  * 提供动态工具注册和管理REST接口
+ * 
+ * <p>依赖 application 层的 ToolService，不再直接依赖 infra 层</p>
  */
 @Slf4j
 @RestController
@@ -36,8 +35,7 @@ import java.util.stream.Collectors;
 public class ToolController {
 
     private final ToolBus toolBus;
-    private final AiMcpToolRepository aiMcpToolRepository;
-    private final ToolConverter toolConverter;
+    private final ToolService toolService;
     private final McpProtocolAdapter mcpProtocolAdapter;
 
     /**
@@ -51,24 +49,15 @@ public class ToolController {
         String toolId = request.getToolId() != null ? request.getToolId() : UUID.randomUUID().toString();
         Map<String, Object> config = buildHttpConfig(request);
         
-        // 保存到数据库
-        AiMcpTool entity = new AiMcpTool();
-        entity.setToolId(toolId);
-        entity.setAppId(request.getAppId());
-        entity.setToolName(request.getName());
-        entity.setDescription(request.getDescription());
-        entity.setToolType("HTTP");
-        entity.setConfig(config);
-        entity.setRetryTimes(request.getRetryTimes());
-        entity.setTimeout(request.getTimeout() != null ? request.getTimeout().intValue() : null);
-        entity.setStatus(1);
-        entity.setCreateTime(LocalDateTime.now());
-        entity.setUpdateTime(LocalDateTime.now());
-        aiMcpToolRepository.insert(entity);
-        
-        // 注册到内存
-        ToolDescriptor descriptor = toolConverter.toDescriptor(entity);
-        toolBus.registerTool(descriptor);
+        ToolDescriptor descriptor = toolService.registerHttpTool(
+                toolId,
+                request.getAppId(),
+                request.getName(),
+                request.getDescription(),
+                config,
+                request.getRetryTimes(),
+                request.getTimeout() != null ? request.getTimeout().intValue() : null
+        );
         
         return ResponseEntity.ok(descriptor);
     }
@@ -84,24 +73,15 @@ public class ToolController {
         String toolId = request.getToolId() != null ? request.getToolId() : UUID.randomUUID().toString();
         Map<String, Object> config = buildDbConfig(request);
         
-        // 保存到数据库
-        AiMcpTool entity = new AiMcpTool();
-        entity.setToolId(toolId);
-        entity.setAppId(request.getAppId());
-        entity.setToolName(request.getName());
-        entity.setDescription(request.getDescription());
-        entity.setToolType("DB");
-        entity.setConfig(config);
-        entity.setRetryTimes(request.getRetryTimes());
-        entity.setTimeout(request.getTimeout() != null ? request.getTimeout().intValue() : null);
-        entity.setStatus(1);
-        entity.setCreateTime(LocalDateTime.now());
-        entity.setUpdateTime(LocalDateTime.now());
-        aiMcpToolRepository.insert(entity);
-        
-        // 注册到内存
-        ToolDescriptor descriptor = toolConverter.toDescriptor(entity);
-        toolBus.registerTool(descriptor);
+        ToolDescriptor descriptor = toolService.registerDbTool(
+                toolId,
+                request.getAppId(),
+                request.getName(),
+                request.getDescription(),
+                config,
+                request.getRetryTimes(),
+                request.getTimeout() != null ? request.getTimeout().intValue() : null
+        );
         
         return ResponseEntity.ok(descriptor);
     }
@@ -113,23 +93,8 @@ public class ToolController {
     @Operation(summary = "注册工具", description = "动态注册一个通用工具")
     public ResponseEntity<ToolDescriptor> registerTool(@Valid @RequestBody ToolDescriptor descriptor) {
         log.info("注册工具: {} (类型: {})", descriptor.getName(), descriptor.getExecutorType());
-        
-        if (descriptor.getToolId() == null) {
-            descriptor.setToolId(UUID.randomUUID().toString());
-        }
-        if (descriptor.getEnabled() == null) {
-            descriptor.setEnabled(true);
-        }
-        
-        // 保存到数据库
-        AiMcpTool entity = toolConverter.toEntity(descriptor);
-        entity.setCreateTime(LocalDateTime.now());
-        entity.setUpdateTime(LocalDateTime.now());
-        aiMcpToolRepository.insert(entity);
-        
-        // 注册到内存
-        toolBus.registerTool(descriptor);
-        return ResponseEntity.ok(descriptor);
+        ToolDescriptor registered = toolService.registerTool(descriptor);
+        return ResponseEntity.ok(registered);
     }
 
     /**
@@ -173,32 +138,16 @@ public class ToolController {
         String toolId = UUID.randomUUID().toString();
         Map<String, Object> config = buildFunctionConfig(request);
         
-        // 构建工具描述符
-        ToolDescriptor descriptor = ToolDescriptor.builder()
-                .toolId(toolId)
-                .appId(request.getAppId())
-                .name(request.getName())
-                .description(request.getDescription())
-                .executorType("function")
-                .protocol("internal")
-                .visibility(parseVisibility(request.getVisibility()))
-                .authorizedApps(request.getAuthorizedApps())
-                .capabilities(request.getCapabilities())
-                .parameters(convertParameters(request.getParameters()))
-                .config(config)
-                .timeout(request.getTimeout())
-                .enabled(true)
-                .build();
-        
-        // 保存到数据库
-        AiMcpTool entity = toolConverter.toEntity(descriptor);
-        entity.setToolType("FUNCTION");
-        entity.setCreateTime(LocalDateTime.now());
-        entity.setUpdateTime(LocalDateTime.now());
-        aiMcpToolRepository.insert(entity);
-        
-        // 注册到内存
-        toolBus.registerTool(descriptor);
+        ToolDescriptor descriptor = toolService.registerFunctionTool(
+                toolId,
+                request.getAppId(),
+                request.getName(),
+                request.getDescription(),
+                config,
+                request.getAuthorizedApps(),
+                request.getTimeout(),
+                true
+        );
         
         return ResponseEntity.ok(descriptor);
     }
@@ -264,7 +213,7 @@ public class ToolController {
     @GetMapping("/executors")
     @Operation(summary = "获取执行器类型列表", description = "获取所有已注册的执行器类型")
     public ResponseEntity<List<String>> getExecutorTypes() {
-        return ResponseEntity.ok(toolBus.getRegisteredExecutorTypes());
+        return ResponseEntity.ok(toolService.getExecutorTypes());
     }
 
     /**
@@ -273,8 +222,7 @@ public class ToolController {
     @GetMapping("/{toolId}")
     @Operation(summary = "获取工具详情", description = "根据工具ID获取工具详细信息")
     public ResponseEntity<ToolDescriptor> getTool(@PathVariable("toolId") String toolId) {
-        return aiMcpToolRepository.findById(toolId)
-                .map(toolConverter::toDescriptor)
+        return toolService.getTool(toolId)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
@@ -285,7 +233,7 @@ public class ToolController {
     @GetMapping
     @Operation(summary = "获取工具列表", description = "获取所有已注册的工具列表")
     public ResponseEntity<List<ToolDescriptor>> listTools() {
-        List<ToolDescriptor> tools = toolConverter.toDescriptorList(aiMcpToolRepository.findAllEnabled());
+        List<ToolDescriptor> tools = toolService.getAllTools();
         return ResponseEntity.ok(tools);
     }
 
@@ -295,10 +243,7 @@ public class ToolController {
     @GetMapping("/type/{type}")
     @Operation(summary = "根据类型查找工具", description = "查找指定类型的工具")
     public ResponseEntity<List<ToolDescriptor>> findByType(@PathVariable("type") String type) {
-        List<ToolDescriptor> tools = aiMcpToolRepository.findByToolType(type.toUpperCase()).stream()
-                .filter(t -> t.getStatus() != null && t.getStatus() == 1)
-                .map(toolConverter::toDescriptor)
-                .collect(Collectors.toList());
+        List<ToolDescriptor> tools = toolService.getToolsByType(type);
         return ResponseEntity.ok(tools);
     }
 
@@ -308,10 +253,7 @@ public class ToolController {
     @GetMapping("/app/{appId}")
     @Operation(summary = "根据应用ID查找工具", description = "查找指定应用下的所有工具")
     public ResponseEntity<List<ToolDescriptor>> findByAppId(@PathVariable("appId") String appId) {
-        List<ToolDescriptor> tools = aiMcpToolRepository.findByAppId(appId).stream()
-                .filter(t -> t.getStatus() != null && t.getStatus() == 1)
-                .map(toolConverter::toDescriptor)
-                .collect(Collectors.toList());
+        List<ToolDescriptor> tools = toolService.getToolsByAppId(appId);
         return ResponseEntity.ok(tools);
     }
 
@@ -322,12 +264,7 @@ public class ToolController {
     @Operation(summary = "注销工具", description = "注销指定的工具")
     public ResponseEntity<Void> unregisterTool(@PathVariable("toolId") String toolId) {
         log.info("注销工具: {}", toolId);
-        
-        // 从数据库删除
-        aiMcpToolRepository.deleteById(toolId);
-        // 从内存注销
-        toolBus.unregisterTool(toolId);
-        
+        toolService.deleteTool(toolId);
         return ResponseEntity.noContent().build();
     }
 
@@ -339,8 +276,7 @@ public class ToolController {
     public ResponseEntity<ToolResult> invokeTool(
             @PathVariable("toolId") String toolId,
             @RequestBody Map<String, Object> params) {
-        log.info("执行工具: {} - params: {}", toolId, params);
-        ToolResult result = toolBus.invoke(toolId, params, null);
+        ToolResult result = toolService.invokeTool(toolId, params);
         return ResponseEntity.ok(result);
     }
 
@@ -411,20 +347,6 @@ public class ToolController {
         }
         
         return config;
-    }
-
-    /**
-     * 解析可见性
-     */
-    private ToolVisibility parseVisibility(String visibility) {
-        if (visibility == null || visibility.isBlank()) {
-            return ToolVisibility.PRIVATE;
-        }
-        try {
-            return ToolVisibility.valueOf(visibility.toUpperCase());
-        } catch (IllegalArgumentException e) {
-            return ToolVisibility.PRIVATE;
-        }
     }
 
     /**

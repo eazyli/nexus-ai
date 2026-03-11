@@ -47,8 +47,13 @@ public class AiToolUsageLogRepository implements ToolUsageLogRepository {
         List<Map<String, Object>> stats = mapper.calculateSuccessRate(days, minCalls);
         for (Map<String, Object> stat : stats) {
             String toolId = (String) stat.get("tool_id");
-            Double successRate = (Double) stat.get("success_rate");
-            result.put(toolId, successRate);
+            // 使用 Number 类型处理 BigDecimal
+            Double successRate = stat.get("success_rate") != null
+                ? ((Number) stat.get("success_rate")).doubleValue()
+                : null;
+            if (successRate != null) {
+                result.put(toolId, successRate);
+            }
         }
         return result;
     }
